@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 static const char *thread_state_str[] =
 {

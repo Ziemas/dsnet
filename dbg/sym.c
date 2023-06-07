@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 extern unsigned int dot; // defined in mem.c
 static struct {SYMS *head;SYMS *tail;} syms_list = { NULL, NULL };
@@ -426,6 +426,61 @@ LABEL_20:
   return -1;
 }
 
+int __cdecl look_iopmod(
+        void *stream,
+        DS_ELF_EHDR *ehdr,
+        DS_ELF_SHDR *shdr,
+        int id,
+        int base,
+        void (__cdecl *clear_func)())
+{
+  int i; // [esp+4h] [ebp-Ch]
+  IOPMOD *iopmod; // [esp+8h] [ebp-8h]
+  DS_ELF_SHDR *shiopmod; // [esp+Ch] [ebp-4h]
+
+  shiopmod = 0;
+  iopmod = 0;
+  if ( base )
+    return id;
+  for ( i = 0; i < ehdr->shnum; ++i )
+  {
+    if ( shdr[i].type == 1879048320 )
+      shiopmod = &shdr[i];
+  }
+  if ( !shiopmod || shiopmod->size <= 0x1B )
+    goto LABEL_14;
+  iopmod = (IOPMOD *)ds_fload(stream, 0, shiopmod->offset, shiopmod->size, 1);
+  if ( !iopmod )
+    goto LABEL_18;
+  if ( iopmod->moduleinfo == -1 )
+  {
+LABEL_14:
+    if ( id )
+    {
+      if ( mod_fetch_id(id) >= 0 )
+        goto LABEL_17;
+    }
+    else
+    {
+      ds_error("no module name, -b or -id option is needed");
+    }
+  }
+  else
+  {
+    id = mod_id_by_name(id, iopmod->modulename, iopmod->moduleversion);
+    if ( id > 0 )
+    {
+      ((void (__cdecl *)(int))clear_func)(id);
+LABEL_17:
+      ds_free_mem_low(iopmod, "sym.c", "look_iopmod");
+      return id;
+    }
+  }
+LABEL_18:
+  ds_free_mem_low(iopmod, "sym.c", "look_iopmod");
+  return -1;
+}
+
 int __cdecl load_symbol(void *stream, DS_ELF_EHDR *ehdr, DS_ELF_SHDR *shdr, int symndx, int strndx, int id, int base)
 {
   DS_ELF_SHDR *v8; // eax
@@ -471,7 +526,13 @@ int __cdecl load_symbol(void *stream, DS_ELF_EHDR *ehdr, DS_ELF_SHDR *shdr, int 
   psym = symtab;
   for ( i = 0; v10 > i; ++i )
     ++psym;
-  ida = look_eemod(stream, ehdr, shdr, id, base, (void (__cdecl *)())clear_symbol_with_id);
+
+#ifdef TARGET_EE
+  ida = look_eemod(stream, ehdr, shdr, id, base, clear_symbol_with_id);
+#else
+  ida = look_iopmod(stream, ehdr, shdr, id, base, clear_symbol_with_id);
+#endif
+
   syms = (SYMS *)ds_alloc_mem_low("sym.c", "load_symbol", sizeof(SYMS));
   if ( !syms )
     goto LABEL_20;

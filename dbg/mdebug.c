@@ -1,4 +1,4 @@
-#include "dsidb_prototypes.h"
+#include "dbg.h"
 
 static struct {MDEBUG *head;MDEBUG *tail;} mdebug_list = { NULL, NULL };
 static char *cur_fname = NULL;
@@ -442,7 +442,13 @@ int __cdecl load_mdebug(
   unsigned offset; // [esp+48h] [ebp-4h]
   int ida; // [esp+64h] [ebp+18h]
 
+
+#ifdef TARGET_EE
+  ida = look_eemod(stream, elf_header, section_header, id, base, clear_mdebug_with_id);
+#else
   ida = look_iopmod(stream, elf_header, section_header, id, base, clear_mdebug_with_id);
+#endif
+
   if ( ida < 0 )
     return -1;
 
@@ -702,9 +708,10 @@ unsigned int __cdecl file_and_line_to_address(int line, char *path)
       {
         for ( sym = &md->lsyms[fdt->isymBase]; &md->lsyms[fdt->isymBase + fdt->csym] > sym; ++sym )
         {
-          if ( (sym->st_sc_index & 0x3F) == 5
+         if ( (sym->st_sc_index & 0x3F) == 5
             && ((sym->st_sc_index >> 6) & 0x1F) == 1
-            && line == (unsigned __int16)HIWORD(sym->st_sc_index) >> 4 )
+            && ((sym->st_sc_index >> 12) & 0x80000) == 0
+            && line == sym->st_sc_index >> 12 )
           {
             return sym->value + base;
           }

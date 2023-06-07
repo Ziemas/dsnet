@@ -1,4 +1,4 @@
-#include "dsidb_prototypes.h"
+#include "dbg.h"
 
 unsigned int dot = 1048576u;
 unsigned int current_entry_point = 0u;
@@ -1049,6 +1049,213 @@ LABEL_29:
   return r;
 }
 
+// TODO, these can probably be better combined
+#ifdef TARGET_EE
+int __cdecl pload_cmd(int ac, char **av)
+{
+  unsigned int type; // eax
+  int v4; // [esp+4h] [ebp-43Ch] BYREF
+  int id; // [esp+8h] [ebp-438h] BYREF
+  int sload; // [esp+Ch] [ebp-434h]
+  int symndx; // [esp+10h] [ebp-430h]
+  int r; // [esp+14h] [ebp-42Ch]
+  unsigned __int8 *v9; // [esp+18h] [ebp-428h]
+  unsigned __int8 *buf; // [esp+1Ch] [ebp-424h]
+  DS_ELF_REGINFO *ri; // [esp+20h] [ebp-420h]
+  DS_ELF_SHDR *sh; // [esp+24h] [ebp-41Ch]
+  DS_ELF_SHDR *shdr; // [esp+28h] [ebp-418h]
+  DS_ELF_PHDR *ph; // [esp+2Ch] [ebp-414h]
+  DS_ELF_PHDR *phdr; // [esp+30h] [ebp-410h]
+  DS_ELF_EHDR *ehdr; // [esp+34h] [ebp-40Ch]
+  void *stream; // [esp+38h] [ebp-408h]
+  char *av0; // [esp+3Ch] [ebp-404h]
+  char path[1024]; // [esp+40h] [ebp-400h] BYREF
+  int aca; // [esp+448h] [ebp+8h]
+  char **ava; // [esp+44Ch] [ebp+Ch]
+
+  stream = 0;
+  ehdr = 0;
+  phdr = 0;
+  shdr = 0;
+  ri = 0;
+  buf = 0;
+  r = -1;
+  id = 0;
+  v4 = 0;
+  if ( ac <= 0 )
+    return 0;
+  aca = ac - 1;
+  av0 = *av;
+  ava = av + 1;
+  sload = strcmp("sload", av0) == 0;
+  if ( aca > 1 && !strcmp("-id", *ava) )
+  {
+    ds_scan_hex_word(ava[1], (unsigned int *)&id);
+    aca -= 2;
+    ava += 2;
+  }
+  if ( aca > 1 && !strcmp("-b", *ava) )
+  {
+    ds_scan_hex_word(ava[1], (unsigned int *)&v4);
+    aca -= 2;
+    ava += 2;
+  }
+  if ( aca > 0 && **ava == 45 )
+    goto LABEL_11;
+  if ( aca > 0 )
+    strcpy(path, *ava);
+  if ( sload )
+  {
+    if ( !aca )
+    {
+      clear_symbol();
+      clear_mdebug();
+      return 0;
+    }
+    if ( aca > 1 )
+      goto LABEL_11;
+LABEL_23:
+    stream = ds_fopen(path, "r");
+    if ( !stream )
+      goto LABEL_85;
+    ehdr = (DS_ELF_EHDR *)ds_fload(stream, 0, 0, 52, 1);
+    if ( !ehdr )
+      goto LABEL_85;
+    v9 = (unsigned __int8 *)ehdr;
+    if ( ehdr->ident[0] == 98 && v9[1] == 1 || *v9 == 1 && v9[1] == 98 )
+    {
+      if ( !sload )
+        ds_printf("ECOFF is not supported\n");
+      goto LABEL_85;
+    }
+    for ( symndx = 0; (unsigned int)symndx <= 0xF; ++symndx )
+    {
+      if ( ehdr->ident[symndx] != TARG_IDENT[symndx] )
+      {
+        ds_printf("ident error\n");
+        goto LABEL_85;
+      }
+    }
+    if ( ehdr->machine == 8 && (ehdr->type == 2 || ehdr->type == 0xFF91) )
+    {
+      if ( ehdr->ehsize == 52 && ehdr->phentsize == 32 )
+      {
+        if ( !sload )
+        {
+          if ( !ehdr->phnum )
+          {
+            ds_printf("program header not found\n");
+            goto LABEL_85;
+          }
+          phdr = (DS_ELF_PHDR *)ds_fload(stream, 0, ehdr->phoff, 32, ehdr->phnum);
+          if ( !phdr )
+            goto LABEL_85;
+          ph = phdr;
+          symndx = 0;
+          while ( symndx < ehdr->phnum )
+          {
+            if ( ph->type == 1 || ph->filesz )
+            {
+              ds_printf("Loading program (address=0x%W size=0x%W) ...\n", ph->vaddr, ph->filesz);
+              buf = (unsigned __int8 *)ds_fload(stream, 0, ph->offset, 1, ph->filesz);
+              if ( !buf || ds_store_mem(ph->vaddr, buf, ph->filesz) )
+                goto LABEL_85;
+              buf = (unsigned __int8 *)ds_free_mem_low(buf, "mem.c", "pload_cmd");
+            }
+            ++symndx;
+            ++ph;
+          }
+        }
+        if ( ehdr->shnum )
+        {
+          shdr = (DS_ELF_SHDR *)ds_fload(stream, 0, ehdr->shoff, 40, ehdr->shnum);
+          if ( shdr )
+          {
+            sh = shdr;
+            symndx = 0;
+            while ( symndx < ehdr->shnum )
+            {
+              ++symndx;
+              ++sh;
+            }
+            sh = shdr;
+            symndx = 0;
+            while ( symndx < ehdr->shnum )
+            {
+              type = sh->type;
+              if ( type == 1879048197 )
+              {
+                load_mdebug(stream, ehdr, shdr, symndx, id, v4, path);
+              }
+              else if ( type > 0x70000005 )
+              {
+                if ( type == 1879048198 && sh->size == 24 )
+                {
+                  ri = (DS_ELF_REGINFO *)ds_free_mem_low(ri, "mem.c", "pload_cmd");
+                  ri = (DS_ELF_REGINFO *)ds_fload(stream, 0, sh->offset, 24, 1);
+                  if ( !ri )
+                    goto LABEL_85;
+                }
+              }
+              else if ( type == 2 && sh->link && sh->link < ehdr->shnum && sh->entsize == 16 )
+              {
+                load_symbol(stream, ehdr, shdr, symndx, sh->link, id, v4);
+              }
+              ++symndx;
+              ++sh;
+            }
+            if ( !sload )
+            {
+              if ( !ri )
+              {
+                ds_printf("REGINFO not found\n");
+                goto LABEL_85;
+              }
+              ds_printf("Entry address = 0x%W\n", ehdr->entry);
+              ds_printf("GP value      = 0x%W\n", ri->gp_value);
+              current_entry_point = ehdr->entry;
+              current_gp_value = ri->gp_value;
+            }
+            r = 0;
+          }
+        }
+        else
+        {
+          ds_printf("section header not found\n");
+        }
+      }
+      else
+      {
+        ds_printf("invalid header\n");
+      }
+    }
+    else
+    {
+      ds_printf("arch error (type=0x%x, machine=0x%x)\n", ehdr->type, ehdr->machine);
+    }
+LABEL_85:
+    ds_free_mem_low(buf, "mem.c", "pload_cmd");
+    ds_free_mem_low(ri, "mem.c", "pload_cmd");
+    ds_free_mem_low(shdr, "mem.c", "pload_cmd");
+    ds_free_mem_low(phdr, "mem.c", "pload_cmd");
+    ds_free_mem_low(ehdr, "mem.c", "pload_cmd");
+    ds_fclose(stream);
+    return r;
+  }
+  if ( aca > 0 )
+  {
+    set_runarg(aca, ava);
+    goto LABEL_23;
+  }
+LABEL_11:
+  if ( sload )
+    return ds_error("Usage: sload [-id <id>] [-b <base>] [<fname>]");
+  else
+    return ds_error("Usage: pload <fname> [<args>]...");
+}
+
+#else
+
 int __cdecl pload_cmd(int ac, char **av)
 {
   unsigned int type; // eax
@@ -1273,3 +1480,4 @@ LABEL_11:
     return ds_error("Usage: pload <fname> [<args>]...");
 }
 
+#endif

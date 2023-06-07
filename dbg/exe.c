@@ -1,19 +1,9 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 extern DBGP_CONF_DATA dbconf; // defined in dbg.c
 extern unsigned int current_entry_point; // defined in mem.c
 extern unsigned int current_gp_value; // defined in mem.c
-static int brkpt_no = 1;
-static int last_cnt_44 = 1;
-static int last_cnt_47 = 1;
-static int last_cnt_50 = 1;
-static int last_cnt_53 = 1;
-static int last_cnt_72 = 1;
-static int last_cnt_77 = 1;
-static int last_cnt_80 = 1;
-static int last_cnt_83 = 1;
-static int last_cnt_86 = 1;
-static int last_cnt_89 = 1;
+
 static int run_argc = 0;
 static char *run_args = NULL;
 static int run_args_len = 0;
@@ -298,6 +288,7 @@ static int __cdecl add_brkpt(int flag, unsigned int adr, unsigned int cnt)
   int v12; // [esp+Ch] [ebp-8h]
   BRKPT *bp; // [esp+10h] [ebp-4h]
   BRKPT *bp_1; // [esp+10h] [ebp-4h]
+  static int brkpt_no = 1;
 
   for ( bp = bps.head; bp; bp = bp->forw )
   {
@@ -737,12 +728,13 @@ static int __cdecl targ_step_cmd(int ac, char **av)
   int r; // [esp+0h] [ebp-Ch]
   int n; // [esp+4h] [ebp-8h]
   int cnt; // [esp+8h] [ebp-4h] BYREF
+  static int last_cnt = 1;
 
   r = 0;
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_44;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -755,7 +747,7 @@ static int __cdecl targ_step_cmd(int ac, char **av)
     return ds_error("Usage: step [<cnt>]");
   if ( ac > 0 && ds_eval_word(*av, (unsigned int *)&cnt) )
     return -1;
-  last_cnt_44 = cnt;
+  last_cnt = cnt;
   while ( cnt > 0 )
   {
     n = cnt;
@@ -784,12 +776,13 @@ static int __cdecl targ_next_cmd(int ac, char **av)
   int r; // [esp+0h] [ebp-Ch]
   int n; // [esp+4h] [ebp-8h]
   int cnt; // [esp+8h] [ebp-4h] BYREF
+  static int last_cnt = 1;
 
   r = 0;
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_47;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -802,7 +795,7 @@ static int __cdecl targ_next_cmd(int ac, char **av)
     return ds_error("Usage: next [<cnt>]");
   if ( ac > 0 && ds_eval_word(*av, (unsigned int *)&cnt) )
     return -1;
-  last_cnt_47 = cnt;
+  last_cnt = cnt;
   while ( cnt > 0 )
   {
     n = cnt;
@@ -838,6 +831,7 @@ static int __cdecl targ_lstep_cmd(int ac, char **av)
   int line0; // [esp+1Ch] [ebp-Ch] BYREF
   int r; // [esp+20h] [ebp-8h]
   int cnt; // [esp+24h] [ebp-4h] BYREF
+  static int last_cnt = 1;
 
   r = 0;
   if ( !dbconf.nstep )
@@ -845,7 +839,7 @@ static int __cdecl targ_lstep_cmd(int ac, char **av)
   if ( ac > 0 )
     v3 = 1;
   else
-    v3 = last_cnt_50;
+    v3 = last_cnt;
   cnt = v3;
   if ( ac > 0 )
   {
@@ -868,7 +862,7 @@ static int __cdecl targ_lstep_cmd(int ac, char **av)
     file0 = "";
     line0 = 0;
   }
-  last_cnt_50 = cnt;
+  last_cnt = cnt;
   while ( cnt > 0 )
   {
     do
@@ -930,6 +924,7 @@ static int __cdecl targ_lnext_cmd(int ac, char **av)
   int line0; // [esp+1Ch] [ebp-Ch] BYREF
   int r; // [esp+20h] [ebp-8h]
   int cnt; // [esp+24h] [ebp-4h] BYREF
+  static int last_cnt = 1;
 
   r = 0;
   if ( !dbconf.nnext )
@@ -937,7 +932,7 @@ static int __cdecl targ_lnext_cmd(int ac, char **av)
   if ( ac > 0 )
     v3 = 1;
   else
-    v3 = last_cnt_53;
+    v3 = last_cnt;
   cnt = v3;
   if ( ac > 0 )
   {
@@ -960,7 +955,7 @@ static int __cdecl targ_lnext_cmd(int ac, char **av)
     file0 = "";
     line0 = 0;
   }
-  last_cnt_53 = cnt;
+  last_cnt = cnt;
   while ( cnt > 0 )
   {
     do
@@ -1057,6 +1052,7 @@ static unsigned int __cdecl get_pc(SCRS *scrs)
 {
   unsigned int result; // eax
 
+#ifdef TARGET_EE
   if ( (scrs->status & 4) != 0 )
   {
     result = scrs->errorepc;
@@ -1069,6 +1065,11 @@ static unsigned int __cdecl get_pc(SCRS *scrs)
     if ( (scrs->cause & 0x80000000) != 0 )
       result += 4;
   }
+#else
+  result = scrs->epc;
+  if ( (scrs->cause & 0x80000000) != 0 )
+    result += 4;
+#endif
   return result;
 }
 
@@ -1088,6 +1089,7 @@ static int __cdecl is_breakpoint(int flag, SCRS *scrs)
 
 static int __cdecl load_scrs(SCRS *scrs)
 {
+#ifdef TARGET_EE
   quad pv[4]; // [esp+0h] [ebp-6Ch] BYREF
   unsigned int masks[11]; // [esp+40h] [ebp-2Ch] BYREF
 
@@ -1099,6 +1101,17 @@ static int __cdecl load_scrs(SCRS *scrs)
   scrs->cause = ds_cqw(pv[1]);
   scrs->epc = ds_cqw(pv[2]);
   scrs->errorepc = ds_cqw(pv[3]);
+#else
+  unsigned int vals[2]; // [esp+0h] [ebp-30h] BYREF
+  unsigned int masks[10]; // [esp+8h] [ebp-28h] BYREF
+
+  ds_bzero(masks, sizeof(masks));
+  masks[3] = 24576;
+  if ( load_word_registers(masks, vals, 2) )
+    return -1;
+  *scrs = *(SCRS *)vals;
+#endif
+
   return 0;
 }
 
@@ -1123,67 +1136,78 @@ static int __cdecl do_cont(int flag, SCRS *scrs)
 
 static int __cdecl host_do_step(int f_next, SCRS *scrs)
 {
-  unsigned int errorepc; // eax
+  int branch; // eax
+  unsigned int epc; // eax
   signed int cause; // ebx
-  int v5; // eax
-  unsigned int rpc; // [esp+4h] [ebp-Ch]
   unsigned int tadr; // [esp+8h] [ebp-8h] BYREF
   unsigned int ins; // [esp+Ch] [ebp-4h] BYREF
+  unsigned int delay_slot;
 
+#ifdef TARGET_EE
   if ( (scrs->status & 4) != 0 )
-    errorepc = scrs->errorepc;
+    epc = scrs->errorepc;
   else
-    errorepc = scrs->epc;
-  rpc = errorepc;
-  if ( ds_load_mem(errorepc, &ins, 4) )
+    epc = scrs->epc;
+#else
+  epc = scrs->epc;
+#endif
+
+  if ( ds_load_mem(epc, &ins, 4) )
     return -1;
-  cause = scrs->cause;
-  if ( (scrs->status & 4) == 0 )
-  {
-    if ( cause >= 0 )
-      goto LABEL_32;
-LABEL_10:
-    v5 = is_branch_instruction(rpc, ins, &tadr);
-    if ( v5 == 1 )
+
+#ifdef TARGET_EE
+  if (scrs->status & 4) {
+    delay_slot = scrs->cause & 0x80000000;
+  } else {
+    delay_slot = scrs->cause & 0x40000000;
+  }
+#else
+  delay_slot = scrs->cause & 0x80000000;
+#endif
+
+  if (!delay_slot) {
+    if ( add_brkpt(4, epc + 4, 1u) < 0 )
+      return -1;
+
+#ifdef TARGET_EE
+    if ((ins & 0xfc0e0000) != 0x4020000 &&
+        (ins & 0xf8000000) != 0x50000000 &&
+        (ins & 0xf81f0000) != 0x58000000 &&
+        (ins & 0xf3fe0000) != 0x41020000)
     {
-      if ( f_next && ((ins & 0xFC1FFFFF) == 63497 || (ins & 0xFC000000) == 201326592) )
-      {
-        if ( add_brkpt(4, rpc + 8, 1u) < 0 )
-          return -1;
-      }
-      else if ( add_brkpt(4, tadr, 1u) < 0 )
-      {
+      return do_cont(4, scrs);
+    }
+#endif
+  }
+
+  branch = is_branch_instruction(epc, ins, &tadr);
+  if ( branch == 1 )
+  {
+    if ( f_next && ((ins & 0xFC1FFFFF) == 63497 || (ins & 0xFC000000) == 201326592) )
+    {
+      if ( add_brkpt(4, epc + 8, 1u) < 0 )
         return -1;
-      }
     }
-    else if ( v5 > 1 )
+    else if ( add_brkpt(4, tadr, 1u) < 0 )
     {
-      if ( v5 == 2 )
-      {
-        if ( tadr != rpc && add_brkpt(4, tadr, 1u) < 0 )
-          return -1;
-        if ( add_brkpt(4, rpc + 8, 1u) < 0 )
-          return -1;
-      }
+      return -1;
     }
-    else if ( !v5 )
-    {
-      return ds_error("host_do_step: BD=1 and branch=0");
-    }
-    return do_cont(4, scrs);
   }
-  if ( (cause & 0x40000000) != 0 )
-    goto LABEL_10;
-LABEL_32:
-  if ( add_brkpt(4, rpc + 4, 1u) < 0 )
-    return -1;
-  if ( (ins & 0xFC0E0000) == 67239936
-    || (ins & 0xF8000000) == 1342177280
-    || (ins & 0xF81F0000) == 1476395008
-    || (ins & 0xF3FE0000) == 1090650112 )
+  else if ( branch > 1 )
   {
-    goto LABEL_10;
+    if ( branch == 2 )
+    {
+      if ( tadr != epc && add_brkpt(4, tadr, 1u) < 0 )
+        return -1;
+      if ( add_brkpt(4, epc + 8, 1u) < 0 )
+        return -1;
+    }
   }
+  else if ( !branch )
+  {
+    return ds_error("host_do_step: BD=1 and branch=0");
+  }
+
   return do_cont(4, scrs);
 }
 
@@ -1256,16 +1280,20 @@ static int __cdecl host_cont_cmd(int ac, char **av)
 {
   int v2; // eax
   int r; // [esp+4h] [ebp-20h]
-  SCRS scrs_area; // [esp+Ch] [ebp-18h] BYREF
+  SCRS scrs; // [esp+Ch] [ebp-18h] BYREF
   int i; // [esp+1Ch] [ebp-8h]
   int cnt; // [esp+20h] [ebp-4h] BYREF
+  static int last_cnt = 1;
+  unsigned delay_slot;
 
   cnt = 1;
   r = 0;
+
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_72;
+    v2 = last_cnt;
+
   cnt = v2;
   if ( ac > 0 )
   {
@@ -1274,72 +1302,74 @@ static int __cdecl host_cont_cmd(int ac, char **av)
     if ( ac > 0 && **av == 45 )
       return ds_error("Usage: cont [<cnt>]");
   }
+
   if ( ac > 1 )
     return ds_error("Usage: cont [<cnt>]");
+
   if ( ac > 0 )
   {
     if ( ds_eval_word(*av, (unsigned int *)&cnt) )
       return -1;
+
     if ( cnt <= 0 )
       return 0;
   }
-  last_cnt_72 = cnt;
-  if ( load_scrs(&scrs_area) < 0 )
+
+  last_cnt = cnt;
+  if ( load_scrs(&scrs) < 0 )
     return -1;
-  i = 0;
-LABEL_18:
-  if ( cnt > i )
-  {
+
+  for (i = 0; i < cnt; i++) {
     do
     {
-      if ( (scrs_area.status & 4) != 0 )
-      {
-        if ( (scrs_area.cause & 0x40000000) != 0 )
-          goto LABEL_24;
+#ifdef TARGET_EE
+      if (scrs.status & 4) {
+        delay_slot = scrs.cause & 0x80000000;
+      } else {
+        delay_slot = scrs.cause & 0x40000000;
       }
-      else if ( (scrs_area.cause & 0x80000000) != 0 )
-      {
-        goto LABEL_24;
+#else
+      delay_slot = scrs.cause & 0x80000000;
+#endif
+      if (!delay_slot && !is_breakpoint(8, &scrs)) {
+        break;
       }
-      if ( !is_breakpoint(8, &scrs_area) )
-      {
-        r = do_cont(8, &scrs_area);
-        if ( r != 36 )
-          break;
-        ++i;
-        goto LABEL_18;
-      }
-LABEL_24:
-      r = host_do_step(0, &scrs_area);
+
+      r = host_do_step(0, &scrs);
     }
-    while ( r == 36 && !is_breakpoint(8, &scrs_area) );
+    while ( r == 36 && !is_breakpoint(8, &scrs) );
+
+    r = do_cont(8, &scrs);
+    if ( r != 36 )
+      break;
   }
+
   display_current_informations(r);
   return exitc(r);
 }
 
 static int __cdecl host_until_cmd(int ac, char **av)
 {
-  signed int cause; // ebx
   int i; // [esp+8h] [ebp-1ACh]
-  int i_1; // [esp+8h] [ebp-1ACh]
   int r; // [esp+Ch] [ebp-1A8h]
   unsigned int adrs[100]; // [esp+10h] [ebp-1A4h] BYREF
-  SCRS *scrs; // [esp+1A0h] [ebp-14h]
-  SCRS scrs_area; // [esp+1A4h] [ebp-10h] BYREF
+  SCRS scrs; // [esp+1A4h] [ebp-10h] BYREF
   int aca; // [esp+1BCh] [ebp+8h]
   char **ava; // [esp+1C0h] [ebp+Ch]
+  unsigned delay_slot;
 
-  scrs = &scrs_area;
   r = 0;
   if ( ac <= 0 )
     return 0;
+
   aca = ac - 1;
   ava = av + 1;
   if ( aca > 0 && **ava == 45 || aca <= 0 || aca > 100 )
     return ds_error("Usage: until <adr>...");
-  if ( load_scrs(scrs) < 0 )
+
+  if ( load_scrs(&scrs) < 0 )
     return -1;
+
   for ( i = 0; aca > i; ++i )
   {
     if ( ds_eval_word(ava[i], &adrs[i]) )
@@ -1347,41 +1377,51 @@ static int __cdecl host_until_cmd(int ac, char **av)
     if ( (adrs[i] & 3) != 0 )
       return ds_error("invalid align");
   }
-  for ( i_1 = 0; aca > i_1; ++i_1 )
+
+  for ( i = 0; aca > i; ++i )
   {
-    if ( adrs[i_1] == get_pc(scrs) )
+    if ( adrs[i] == get_pc(&scrs) )
     {
-      if ( aca == 1 || i_1 < aca - 1 )
+      if ( aca == 1 || i < aca - 1 )
       {
-        r = host_do_step(0, scrs);
+        r = host_do_step(0, &scrs);
         if ( r != 36 )
           break;
       }
       if ( aca != 1 )
         continue;
     }
-    cause = scrs->cause;
-    if ( (scrs->status & 4) != 0 )
-    {
-      if ( (cause & 0x40000000) != 0 )
-        goto LABEL_30;
+
+#ifdef TARGET_EE
+    if (scrs.status & 4) {
+      delay_slot = scrs.cause & 0x80000000;
+    } else {
+      delay_slot = scrs.cause & 0x40000000;
     }
-    else if ( cause < 0 )
-    {
-LABEL_30:
-      r = host_do_step(0, scrs);
+#else
+    delay_slot = scrs.cause & 0x80000000;
+#endif
+
+    if (delay_slot) {
+      r = host_do_step(0, &scrs);
+
       if ( r != 36 )
         break;
-      if ( adrs[i_1] == get_pc(scrs) )
+
+      if ( adrs[i] == get_pc(&scrs) )
         continue;
     }
-    if ( add_brkpt(16, adrs[i_1], 1u) < 0 )
+
+    if ( add_brkpt(16, adrs[i], 1u) < 0 )
       return -1;
-    r = do_cont(16, scrs);
+
+    r = do_cont(16, &scrs);
     if ( r != 36 )
       break;
   }
+
   display_current_informations(r);
+
   return exitc(r);
 }
 
@@ -1393,6 +1433,7 @@ static int __cdecl host_step_cmd(int ac, char **av)
   int i; // [esp+18h] [ebp-Ch]
   int cnt; // [esp+1Ch] [ebp-8h] BYREF
   int f_next; // [esp+20h] [ebp-4h]
+  static int last_cnt = 1;
 
   f_next = 0;
   cnt = 1;
@@ -1400,7 +1441,7 @@ static int __cdecl host_step_cmd(int ac, char **av)
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_77;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -1418,7 +1459,7 @@ static int __cdecl host_step_cmd(int ac, char **av)
   if ( cnt <= 0 )
     return 0;
 LABEL_15:
-  last_cnt_77 = cnt;
+  last_cnt = cnt;
   if ( load_scrs(&scrs_area) < 0 )
     return -1;
   for ( i = 0; cnt > i; ++i )
@@ -1439,6 +1480,7 @@ static int __cdecl host_next_cmd(int ac, char **av)
   int i; // [esp+18h] [ebp-Ch]
   int cnt; // [esp+1Ch] [ebp-8h] BYREF
   int f_next; // [esp+20h] [ebp-4h]
+  static int last_cnt = 1;
 
   f_next = 1;
   cnt = 1;
@@ -1446,7 +1488,7 @@ static int __cdecl host_next_cmd(int ac, char **av)
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_80;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -1464,7 +1506,7 @@ static int __cdecl host_next_cmd(int ac, char **av)
   if ( cnt <= 0 )
     return 0;
 LABEL_15:
-  last_cnt_80 = cnt;
+  last_cnt = cnt;
   if ( load_scrs(&scrs_area) < 0 )
     return -1;
   for ( i = 0; cnt > i; ++i )
@@ -1485,6 +1527,7 @@ static int __cdecl host_lstep_cmd(int ac, char **av)
   int i; // [esp+18h] [ebp-Ch]
   int cnt; // [esp+1Ch] [ebp-8h] BYREF
   int f_next; // [esp+20h] [ebp-4h]
+  static int last_cnt = 1;
 
   f_next = 0;
   cnt = 1;
@@ -1492,7 +1535,7 @@ static int __cdecl host_lstep_cmd(int ac, char **av)
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_83;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -1510,7 +1553,7 @@ static int __cdecl host_lstep_cmd(int ac, char **av)
   if ( cnt <= 0 )
     return 0;
 LABEL_15:
-  last_cnt_83 = cnt;
+  last_cnt = cnt;
   if ( load_scrs(&scrs_area) < 0 )
     return -1;
   for ( i = 0; cnt > i; ++i )
@@ -1534,6 +1577,7 @@ static int __cdecl host_lnext_cmd(int ac, char **av)
   int i; // [esp+18h] [ebp-Ch]
   int cnt; // [esp+1Ch] [ebp-8h] BYREF
   int f_next; // [esp+20h] [ebp-4h]
+  static int last_cnt = 1;
 
   f_next = 1;
   cnt = 1;
@@ -1541,7 +1585,7 @@ static int __cdecl host_lnext_cmd(int ac, char **av)
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_86;
+    v2 = last_cnt;
   cnt = v2;
   if ( ac > 0 )
   {
@@ -1559,7 +1603,7 @@ static int __cdecl host_lnext_cmd(int ac, char **av)
   if ( cnt <= 0 )
     return 0;
 LABEL_15:
-  last_cnt_86 = cnt;
+  last_cnt = cnt;
   if ( load_scrs(&scrs_area) < 0 )
     return -1;
   for ( i = 0; cnt > i; ++i )
@@ -1582,77 +1626,95 @@ static int __cdecl host_luntil_cmd(int ac, char **av)
   unsigned int v5; // eax
   int r; // [esp+4h] [ebp-34h]
   char *file0; // [esp+8h] [ebp-30h]
-  SCRS v8; // [esp+10h] [ebp-28h] BYREF
+  SCRS scrs; // [esp+10h] [ebp-28h] BYREF
   unsigned int delta0; // [esp+20h] [ebp-18h] BYREF
   unsigned int line0; // [esp+24h] [ebp-14h] BYREF
   unsigned int line; // [esp+28h] [ebp-10h] BYREF
   unsigned int addr; // [esp+2Ch] [ebp-Ch]
   int i; // [esp+30h] [ebp-8h]
   int cnt; // [esp+34h] [ebp-4h]
+  static int last_cnt = 1;
+  unsigned int delay_slot;
 
   cnt = 1;
   r = 0;
+
   if ( ac > 0 )
     v2 = 1;
   else
-    v2 = last_cnt_89;
+    v2 = last_cnt;
+
   cnt = v2;
   if ( ac > 0 )
   {
     --ac;
     ++av;
-    if ( ac > 0 && **av == 45 )
+    if ( ac > 0 && **av == '-' )
       return ds_error("Usage: luntil <line>");
   }
+
   if ( ac != 1 )
     return ds_error("Usage: luntil <line>");
-  last_cnt_89 = cnt;
-  if ( load_scrs(&v8) < 0 )
+
+  last_cnt = cnt;
+  if ( load_scrs(&scrs) < 0 )
     return -1;
-  addr = get_pc(&v8);
+
+  addr = get_pc(&scrs);
   if ( ds_scan_digit_word(*av, &line) )
     return ds_error("Usage: luntil <line>");
+
   file0 = address_to_file_and_line(addr, (int *)&line0, 0, (int *)&delta0, 0);
   if ( !file0 || !line0 )
     return ds_error("*** No line for 0x%W", addr);
+
   addr = file_and_line_to_address(line, file0);
   if ( !addr )
     return ds_error("*** No address for line %d in %s", line, file0);
+
   for ( i = 0; i < 1; ++i )
   {
-    pc = get_pc(&v8);
+    pc = get_pc(&scrs);
+
     if ( addr == pc )
     {
-      r = host_do_step(0, &v8);
+      r = host_do_step(0, &scrs);
       if ( r != 36 )
         break;
     }
-    if ( (v8.status & 4) != 0 )
-    {
-      if ( (v8.cause & 0x40000000) == 0 )
-        goto LABEL_28;
+
+#ifdef TARGET_EE
+    if (scrs.status & 4) {
+      delay_slot = scrs.cause & 0x80000000;
+    } else {
+      delay_slot = scrs.cause & 0x40000000;
     }
-    else if ( (v8.cause & 0x80000000) == 0 )
-    {
-      goto LABEL_28;
+#else
+    delay_slot = scrs.cause & 0x80000000;
+#endif
+
+    if (delay_slot) {
+      r = host_do_step(0, &scrs);
+      if ( r != 36 )
+        break;
+      v5 = get_pc(&scrs);
+      if ( addr == v5 )
+        break;
     }
-    r = host_do_step(0, &v8);
-    if ( r != 36 )
-      break;
-    v5 = get_pc(&v8);
-    if ( addr == v5 )
-      break;
-LABEL_28:
+
     if ( add_brkpt(16, addr, 1u) < 0 )
       return -1;
-    r = do_cont(16, &v8);
+
+    r = do_cont(16, &scrs);
     if ( r != 36 )
       break;
   }
+
   if ( r )
     display_current_informations(r);
   else
     lstep_default_list();
+
   return exitc(r);
 }
 

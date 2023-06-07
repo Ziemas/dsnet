@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 char *ds_stamp_str[2] = { DSNET_STAMP_STRING, DSNET_VERSION_STRING };
 char *ds_version_str = DSNET_VERSION_STRING;
@@ -21,11 +21,11 @@ DBGP_CONF_DATA dbconf =
 {
   3u,
   0u,
-  560u,
+  PROTO_SDBGP,
   0u,
   1u,
   0u,
-  7u,
+  REG_SIZE,
   1u,
   0u,
   1u,
@@ -101,8 +101,13 @@ static int xgkt_vif1;
 static int rdimg_seq;
 static int rdimg_len;
 
+#ifdef TARGET_EE
 quad regbuf_vals[11][32];
 unsigned int regbuf_mask[11];
+#else TARGET_EE
+unsigned int regbuf_vals[11][32];
+unsigned int regbuf_mask[11];
+#endif
 
 static void __cdecl ntoh_word_copy(unsigned int *dest, unsigned int *src, int len);
 static DSP_BUF *__cdecl alloc_dbgp(int id, int group, int type, int code, int result, int count, void **pp, int len);
@@ -143,7 +148,7 @@ static int __cdecl xgkt_cmd(int ac, char **av);
 static int __cdecl storeimage_cmd(int ac, char **av);
 static int __cdecl bpfunc_cmd(int ac, char **av);
 static DSP_BUF *__cdecl recv_dcmp(DS_DESC *desc, DSP_BUF *db);
-static void __cdecl batch(int ac, char **av);
+static void __cdecl atch(int ac, char **av);
 static DSP_BUF *__cdecl recv_netmp(DS_DESC *desc, DSP_BUF *db);
 static int __cdecl send_netmp_connect_request();
 static DSP_BUF *__cdecl recv_console(DS_DESC *desc, DSP_BUF *db);
@@ -167,7 +172,7 @@ static DSP_BUF *__cdecl alloc_dbgp(int id, int group, int type, int code, int re
 {
   DSP_BUF *db; // [esp+1Ch] [ebp-Ch]
 
-  db = ds_alloc_buf(560, 69, 0, len + 8);
+  db = ds_alloc_buf(PROTO_SDBGP, 69, 0, len + 8);
   if ( !db )
     return 0;
   db->buf[8] = id;
@@ -268,7 +273,11 @@ static DSP_BUF *__cdecl recv_ttyp(DS_DESC *desc, DSP_BUF *db)
 
   if ( !db )
     return 0;
+#ifdef TARGET_EE
   if ( (cur_state & 2) == 0 || cur_proto != 560 || cur_stype != 20 )
+#else
+  if ( (cur_state & 2) == 0 || cur_proto != 304 || cur_stype != 20 )
+#endif
   {
     n = *(unsigned __int16 *)db->buf - 12;
     if ( !*(_DWORD *)&db->buf[8] )
@@ -299,7 +308,7 @@ static void __cdecl flush_tty_buf()
   ttyq.get = 0;
   ttyq.put = 0;
   wv = 1;
-  db = ds_alloc_buf(528, 72, &wv, 4);
+  db = ds_alloc_buf(PROTO_TTYP, 72, &wv, 4);
   if ( db )
     ds_send_desc(target_desc, db);
 }
@@ -315,7 +324,7 @@ static void __cdecl abort_input(int code)
   if ( (cur_state & 2) != 0 && (db = alloc_dbgp(0, 0, 20, 0, 0, 0, 0, 0)) != 0 )
   {
     ds_send_desc(target_desc, db);
-    cur_proto = 560;
+    cur_proto = PROTO_SDBGP;
     cur_stype = 20;
     ds_printf("*** Sending Break ...\n");
     LOBYTE(cur_state) = cur_state | 0x40;
@@ -335,11 +344,11 @@ static void __cdecl normal_input(int code)
   unsigned __int8 v3; // [esp+13h] [ebp-1h]
 
   v3 = code;
-  if ( (cur_state & 2) != 0 && (cur_proto != 560 || cur_stype != 20) )
+  if ( (cur_state & 2) != 0 && (cur_proto != PROTO_SDBGP || cur_stype != 20) )
   {
     dat.zero = 0;
     dat.code = v3;
-    p = ds_alloc_buf(528, 69, &dat, 5);
+    p = ds_alloc_buf(PROTO_TTYP, 69, &dat, 5);
     if ( p )
       ds_send_desc(target_desc, p);
   }
@@ -1092,6 +1101,131 @@ static int __cdecl store_mem(unsigned int adr, void *ptr, int len)
   return rdwr_mem(10, adr, ptr, len);
 }
 
+int __cdecl load_word_registers(unsigned int *masks, unsigned int *pv, int n)
+{
+  int nr; // [esp+Ch] [ebp-20h]
+  int k; // [esp+10h] [ebp-1Ch]
+  int j; // [esp+14h] [ebp-18h]
+  int i; // [esp+18h] [ebp-14h]
+  unsigned int *dp; // [esp+1Ch] [ebp-10h]
+  DBGP_REG *rh; // [esp+20h] [ebp-Ch] BYREF
+  DSP_BUF *db; // [esp+24h] [ebp-8h]
+  int id; // [esp+28h] [ebp-4h]
+
+  id = 0;
+  j = 0;
+  i = 0;
+  while ( 1 )
+  {
+    if ( n <= 0 )
+      return 0;
+    nr = n;
+    if ( dbconf.nreg < n )
+      nr = dbconf.nreg;
+    db = alloc_dbgp(id, 0, 4, 0, 0, (unsigned __int8)nr, &rh, 8 * nr);
+    if ( !db )
+      return -1;
+    if ( i > 9 )
+      break;
+    for ( k = 0; nr > k; ++k )
+    {
+      while ( !masks[i] )
+      {
+        j = 0;
+        if ( ++i > 9 )
+          return ds_error("internal error %s:%s", "dbg.c", "load_word_registers");
+      }
+      while ( (masks[i] & (1 << j)) == 0 )
+      {
+        if ( ++j > 31 )
+        {
+          j = 0;
+          if ( ++i > 9 )
+            return ds_error("internal error %s:%s", "dbg.c", "load_word_registers");
+        }
+      }
+      rh->kind = i;
+      rh->number = j;
+      rh->reserved = 0;
+      dp = (unsigned int *)++rh;
+      ds_bzero(rh, sizeof(DBGP_REG));
+      rh = (DBGP_REG *)(dp + 1);
+      if ( ++j > 31 )
+      {
+        j = 0;
+        ++i;
+      }
+    }
+    if ( send_and_wait(db, 4, pv, nr, 0) )
+      return -1;
+    pv += nr;
+    n -= nr;
+  }
+  return ds_error("internal error %s:%s", "dbg.c", "load_word_registers");
+}
+
+int __cdecl store_word_registers(unsigned int *masks, unsigned int *pv, int n)
+{
+  int nr; // [esp+Ch] [ebp-20h]
+  int k; // [esp+10h] [ebp-1Ch]
+  int j; // [esp+14h] [ebp-18h]
+  int i; // [esp+18h] [ebp-14h]
+  unsigned int *dp; // [esp+1Ch] [ebp-10h]
+  DBGP_REG *rh; // [esp+20h] [ebp-Ch] BYREF
+  DSP_BUF *db; // [esp+24h] [ebp-8h]
+  int id; // [esp+28h] [ebp-4h]
+
+  id = 0;
+  j = 0;
+  i = 0;
+  while ( 1 )
+  {
+    if ( n <= 0 )
+      return 0;
+    nr = n;
+    if ( dbconf.nreg < n )
+      nr = dbconf.nreg;
+    db = alloc_dbgp(id, 0, 6, 0, 0, (unsigned __int8)nr, &rh, 8 * nr);
+    if ( !db )
+      return -1;
+    if ( i > 9 )
+      break;
+    for ( k = 0; nr > k; ++k )
+    {
+      while ( !masks[i] )
+      {
+        j = 0;
+        if ( ++i > 9 )
+          return ds_error("internal error %s:%s", "dbg.c", "store_word_registers");
+      }
+      while ( (masks[i] & (1 << j)) == 0 )
+      {
+        if ( ++j > 31 )
+        {
+          j = 0;
+          if ( ++i > 9 )
+            return ds_error("internal error %s:%s", "dbg.c", "store_word_registers");
+        }
+      }
+      rh->kind = i;
+      rh->number = j;
+      rh->reserved = 0;
+      dp = (unsigned int *)&rh[1];
+      *dp = *pv++;
+      rh = (DBGP_REG *)(dp + 1);
+      if ( ++j > 31 )
+      {
+        j = 0;
+        ++i;
+      }
+    }
+    if ( send_and_wait(db, 6, 0, nr, 0) )
+      return -1;
+    n -= nr;
+  }
+  return ds_error("internal error %s:%s", "dbg.c", "store_word_registers");
+}
+
 int __cdecl get_handlerlist(DBGP_HDR *phdr)
 {
   DSP_BUF *db; // [esp+0h] [ebp-8h]
@@ -1476,7 +1610,7 @@ static DSP_BUF *__cdecl recv_loadp(DS_DESC *desc, DSP_BUF *db)
           vals[0] = ip->result;
           vals[1] = *(_DWORD *)&ip[1].cmd;
           r = iload_callback(id, ip->cmd, vals, 8);
-          if ( r && (cur_state & 1) != 0 && cur_proto == 560 && cur_wtype == 21 )
+          if ( r && (cur_state & 1) != 0 && cur_proto == PROTO_LOADP && cur_wtype == 21 )
           {
             cur_result = r;
             cur_state &= 0xFFFFFFFC;
@@ -1491,7 +1625,7 @@ static DSP_BUF *__cdecl recv_loadp(DS_DESC *desc, DSP_BUF *db)
       }
       else if ( (cur_state & 1) != 0 )
       {
-        if ( cur_proto == 592 && cur_wtype == ip->cmd )
+        if ( cur_proto == PROTO_LOADP && cur_wtype == ip->cmd )
         {
           if ( cur_stamp == ip->stamp )
           {
@@ -1608,14 +1742,19 @@ int __cdecl send_iload_and_wait(int cmd, int action, unsigned int id, void *ptr,
   if ( is_target_is_running() )
     goto LABEL_10;
 LABEL_8:
+#ifdef TARGET_EE
   if ( !IsSupported(3, 20) )
     return ds_error("LOADP extension is required DBGP version %d.%d or later.", 3, 20);
+#else
+  if ( !IsSupported(3, 1) )
+    return ds_error("LOADP extension is required DBGP version %d.%d or later.", 3, 1);
+#endif
 LABEL_10:
   if ( is_target_is_running() )
   {
     if ( !v15 )
       ds_bzero(regbuf_mask, sizeof(regbuf_mask));
-    db = ds_alloc_buf(592, 69, 0, len + 8);
+    db = ds_alloc_buf(PROTO_LOADP, 69, 0, len + 8);
     if ( db )
     {
       dh = (DECI2_HDR *)db->buf;
@@ -1633,7 +1772,7 @@ LABEL_10:
       while ( 1 )
       {
         cur_state = 1;
-        cur_proto = 592;
+        cur_proto = PROTO_LOADP;
         cur_stype = v15;
         cur_wtype = v15 + 1;
         dsc_proto = 0;
@@ -1728,14 +1867,14 @@ static int __cdecl get_and_check_config()
     ds_printf("can not get GETCONF - may be reset is needed\n");
     return -1;
   }
-  else if ( dbconf.target_id == 560 )
+  else if ( dbconf.target_id == PROTO_SDBGP )
   {
     if ( (dbconf.mem_align & 1) != 0 )
     {
       for ( n = 10; n >= 0 && (dbconf.mem_align & (1 << n)) == 0; --n )
         ;
       dbconf_max_mem_align = n;
-      if ( dbconf.reg_size == 7 )
+      if ( dbconf.reg_size == REG_SIZE )
       {
         if ( dbconf.nbrkpt <= 0xFF )
         {
@@ -2034,12 +2173,14 @@ static int __cdecl reset_cmd(int ac, char **av)
   clear_symbol();
   clear_mdebug();
   clear_mod_list();
+#ifdef TARGET_EE
   if ( xgkt_stream )
     ds_fclose(xgkt_stream);
   xgkt_stream = 0;
   if ( rdimg_stream )
     ds_fclose(rdimg_stream);
   rdimg_stream = 0;
+#endif
   ds_bzero(regbuf_mask, sizeof(regbuf_mask));
   if ( ds_reset(target_desc, &mb, 34) < 0 )
     return -1;
@@ -2247,7 +2388,11 @@ static DSP_BUF *__cdecl recv_dcmp(DS_DESC *desc, DSP_BUF *db)
       if ( db->buf[9] == 1 && cur_proto == ed->orig_hdr.length )
         ++dsc_proto;
     }
+#ifdef TARGET_EE
     else if ( ed->orig_hdr.length == 69 )
+#else
+    else if ( ed->orig_hdr.length == 73 )
+#endif
     {
       ++dsc_connected;
       if ( need_getconf )
@@ -2281,7 +2426,11 @@ static DSP_BUF *__cdecl recv_dcmp(DS_DESC *desc, DSP_BUF *db)
     }
     if ( (cur_state & 1) != 0 && cur_proto == *(unsigned __int16 *)&db->buf[16] )
     {
+#ifdef TARGET_EE
       if ( cur_proto == 560 )
+#else
+      if ( cur_proto == 304 )
+#endif
       {
         if ( cur_stype != (unsigned __int8)db->buf[22] )
           return ds_free_buf(db);
@@ -2338,12 +2487,14 @@ static DSP_BUF *__cdecl recv_netmp(DS_DESC *desc, DSP_BUF *db)
     clear_symbol();
     clear_mdebug();
     clear_mod_list();
+#ifdef TARGET_EE
     if ( xgkt_stream )
       ds_fclose(xgkt_stream);
     xgkt_stream = 0;
     if ( rdimg_stream )
       ds_fclose(rdimg_stream);
     rdimg_stream = 0;
+#endif
     ds_recv_drfp(desc, 0);
     dbconf.v3.run_stop_state = 0;
     if ( (cur_state & 1) != 0 )
@@ -2455,53 +2606,53 @@ static int __cdecl send_netmp_connect_request()
 
   ds_bzero(protos, sizeof(protos));
   p = &protos[1];
-  protos[0].pri = -48;
-  protos[0].proto = 560;
+  protos[0].pri = PRI;
+  protos[0].proto = PROTO_SDBGP;
   for ( i = 0; i <= 9; ++i )
   {
     if ( ((opt_tty_mask->val >> i) & 1) != 0 )
     {
       _p = p++;
-      _p->pri = -48;
-      _p->proto = i + 528;
+      _p->pri = PRI;
+      _p->proto = i + PROTO_TTYP;
     }
   }
   if ( SLOWORD(opt_tty_mask->val) < 0 )
   {
     _p_3 = p++;
-    _p_3->pri = -48;
-    _p_3->proto = 543;
+    _p_3->pri = PRI;
+    _p_3->proto = PROTO_KTTYP;
   }
   for ( i_1 = 0; i_1 <= 9; ++i_1 )
   {
     if ( ((opt_atty_mask->val >> i_1) & 1) != 0 )
     {
       _p_4 = p++;
-      _p_4->pri = -48;
-      _p_4->proto = i_1 + 272;
+      _p_4->pri = PRI;
+      _p_4->proto = i_1 + PROTO_TTYP;
     }
   }
   if ( SLOWORD(opt_atty_mask->val) < 0 )
   {
     _p_5 = p++;
-    _p_5->pri = -48;
-    _p_5->proto = 287;
+    _p_5->pri = PRI;
+    _p_5->proto = PROTO_KTTYP;
   }
   if ( (opt_tty_mask->val & 0x10000) != 0 )
   {
     _p_6 = p++;
-    _p_6->pri = -48;
-    _p_6->proto = 1043;
+    _p_6->pri = PRI;
+    _p_6->proto = PROTO_STTYP;
   }
   pri = opt_file_priority->val;
   if ( pri >= 0 )
   {
     _p_7 = p++;
     _p_7->pri = pri;
-    _p_7->proto = 288;
+    _p_7->proto = PROTO_DRFP;
   }
-  p->pri = -48;
-  p->proto = 592;
+  p->pri = PRI;
+  p->proto = PROTO_LOADP;
   if ( ds_send_netmp(target_desc, 0, 0, protos, (char *)&p[1] - (char *)protos) < 0 )
     ds_exit(135);
   return 0;
@@ -2658,10 +2809,12 @@ static void __cdecl set_options_to_default()
   opt_dr_default_format = ds_set_option("dr_default_format", 3, (char *)"", 0, 1);
   opt_dr_default_di = ds_set_option("dr_default_di", 3, "\\di -m $_PC $_PC-8 7", 0, 1);
   opt_ex_default_dr = ds_set_option("ex_default_dr", 3, "\\dr", 0, 1);
+#ifdef TARGET_EE
   opt_dr0_default_di = ds_set_option("dr0_default_di", 3, "\\vdi -vu0 -m $_vu0vi26 $_vu0vi26-3 7", 0, 1);
   opt_ex0_default_dr = ds_set_option("ex0_default_dr", 3, "\\dr -vu0", 0, 1);
   opt_dr1_default_di = ds_set_option("dr1_default_di", 3, "\\vdi -vu1 -m $_vu1vi26 $_vu1vi26-3 7", 0, 1);
   opt_ex1_default_dr = ds_set_option("ex1_default_dr", 3, "\\dr -vu1", 0, 1);
+#endif
   opt_lstep_default_list = ds_set_option("lstep_default_list", 3, "\\list", 0, 1);
   opt_lstep_stop_at_no_line = ds_set_option("lstep_stop_at_no_line", 2, 0, 1, 1);
   opt_source_directories = ds_set_option("source_directories", 3, (char *)"", 0, 1);
@@ -2671,7 +2824,9 @@ static void __cdecl set_options_to_default()
   opt_current_ibootp = ds_set_option("current_ibootp", 3, "-1", 0, 1);
   opt_automatic_prefix_breakpoint = ds_set_option("automatic_prefix_breakpoint", 1, 0, 0, 1);
   opt_describe_ub_all = ds_set_option("describe_ub_all", 1, 0, 0, 1);
+#ifdef TARGET_EE
   opt_xgkt_flag = ds_set_option("xgkt_flag", 2, 0, 0, 1);
+#endif
   opt_di_address = ds_set_option("di_address", 2, 0, 11, 1);
   opt_di_instruction_word = ds_set_option("di_instruction_word", 2, 0, 0, 1);
   opt_di_branch_address = ds_set_option("di_branch_address", 2, 0, 0, 1);
@@ -2830,9 +2985,11 @@ int __cdecl main(int ac, char **av)
     ds_exit(135);
   if ( !ds_add_recv_func(target_desc, 592, -1, -1, recv_loadp) )
     ds_exit(135);
+#ifdef TARGET_EE
   ds_cmd_install("dt", "[-[acdefhrqsuvw]*] [<tid>]", "display thread", dt_cmd);
   ds_cmd_install("ds", "[-v] [<sid>]", "display semaphore", ds_cmd);
   ds_cmd_install("intr", (char *)"", "display handler", intr_cmd);
+#endif
   ds_cmd_install("dq", "[<adr> [<cnt>]]", "display memory", dmem_cmd);
   ds_cmd_install("dd", "[<adr> [<cnt>]]", "display memory", dmem_cmd);
   ds_cmd_install("dw", "[<adr> [<cnt>]]", "display memory", dmem_cmd);
@@ -2869,7 +3026,9 @@ int __cdecl main(int ac, char **av)
   ds_cmd_install("memlist", "[-s] [-f] [-a <adr>] [-r <range>]", "memory list", memlist_cmd);
   ds_cmd_install("sload", "[-id <id>] [-b <base>] [<fname>]", "symbol load", pload_cmd);
   ds_cmd_install("di", "[-m <mark>] [<adr> [<cnt>]]", "disassemble", di_cmd);
+#ifdef TARGET_EE
   ds_cmd_install("vdi", "[-<cpuid>] [-m <mark>] [<adr> [<cnt>]]", "VU disassemble", vdi_cmd);
+#endif
   ds_cmd_install("as", "<adr> <inst>", "assemble", as_cmd);
   ds_cmd_install("list", "[<adr> [<cnt> [<back>]]]", "list source line", list_cmd);
   ds_cmd_install("bt", "[<cnt>]", "backtrace", bt_cmd);
@@ -2879,7 +3038,9 @@ int __cdecl main(int ac, char **av)
   ds_cmd_install("bd", "[<adr>]...", "disable breakpoint", bd_cmd);
   ds_cmd_install("hbp", "[pc|da|dr|dw][uskx]*[:<adr>[,<msk>]]...", "set hardware breakpoint", hbp_cmd);
   ds_cmd_install("hub", "[pc|da|dr|dw]...", "remove hardware breakpoint", hbp_cmd);
+#ifdef TARGET_EE
   ds_cmd_install("run", "[<fname> [<args>]...]", "run program", run_cmd);
+#endif
   ds_cmd_install("cont", "[<cnt>]", "continue program", cont_cmd);
   ds_cmd_install("step", "[<cnt>]", "step instruction", step_cmd);
   ds_cmd_install("next", "[<cnt>]", "next instruction", next_cmd);
@@ -2890,9 +3051,11 @@ int __cdecl main(int ac, char **av)
   ds_cmd_install("break", (char *)"", "break program", break_cmd);
   ds_cmd_install("wait", (char *)"", "wait program", wait_cmd);
   ds_cmd_install("reset", "[-i] [<ebootp> [<ibootp>]]", "reset target", reset_cmd);
+#ifdef TARGET_EE
   ds_cmd_install("xgkt", "<fname> <cnt> [<off>]", "start XGKICK trace", xgkt_cmd);
   ds_cmd_install("dbgctl", "{vu0|vu1} {on|off}", "debug control", dbgctl_cmd);
   ds_cmd_install("storeimage", "<fname> <bp> <bw> <psm> <x> <y> <w> <h>", "store GS image", storeimage_cmd);
+#endif
   ds_cmd_install("bpfunc", "<adr>", "set break point function", bpfunc_cmd);
   ds_add_help(0, dbg_help);
   ds_help_completion_func = (int (__cdecl *)())dbg_help_completion;

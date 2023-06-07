@@ -145,35 +145,37 @@ add_executable(dselist src_e/dslist.c)
 
 target_link_libraries(dselist dsnet)
 
+set(dbg_sources)
 
 add_executable(dsidb
-	dbg_i/dbg.c
-	dbg_i/exe.c
-	dbg_i/help.c
-	dbg_i/ireg.c
-	dbg_i/mdebug.c
-	dbg_i/mem.c
-	dbg_i/mod.c
-	dbg_i/opc.c
-	dbg_i/sym.c
+	dbg/dbg.c
+	dbg/exe.c
+	dbg/help.c
+	dbg/ireg.c
+	dbg/mdebug.c
+	dbg/mem.c
+	dbg/mod.c
+	dbg/opc.c
+	dbg/sym.c
 )
 
+target_compile_definitions(dsidb PRIVATE TARGET_IOP)
 target_link_libraries(dsidb dsnet)
 
-
 add_executable(dsedb
-	dbg_e/dbg.c
-	dbg_e/ereg.c
-	dbg_e/ethread.c
-	dbg_e/exe.c
-	dbg_e/help.c
-	dbg_e/mdebug.c
-	dbg_e/mem.c
-	dbg_e/mod.c
-	dbg_e/opc.c
-	dbg_e/sym.c
-	dbg_e/vopc.c
+	dbg/dbg.c
+	dbg/ereg.c
+	dbg/ethread.c
+	dbg/exe.c
+	dbg/help.c
+	dbg/mdebug.c
+	dbg/mem.c
+	dbg/mod.c
+	dbg/opc.c
+	dbg/sym.c
+	dbg/vopc.c
 )
 
+target_compile_definitions(dsedb PRIVATE TARGET_EE)
 target_link_libraries(dsedb dsnet)
 

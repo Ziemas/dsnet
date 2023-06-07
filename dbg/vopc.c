@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 extern unsigned int dot; // defined in mem.c
 static VOPCODE vopcodes_upper[] =

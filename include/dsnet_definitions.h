@@ -160,6 +160,64 @@ typedef uint64_t _QWORD;
 #define CONTAINING_RECORD(address,type,field) ((type *)((char *)(address) - (uintptr_t)(&((type *)0)->field)))
 #endif
 
+#define BIT(b) (1 << b)
+
+enum DESC_TYPE {
+    DESC_KBD = BIT(0),
+    DESC_DEV = BIT(1),
+    DESC_LISTEN = BIT(2),
+    DESC_ACCEPT = BIT(3),
+    DESC_CONNECT = BIT(4),
+    DESC_COMPORT = BIT(5),
+    DESC_NETDEV = BIT(6),
+};
+
+#define DESC_WRITEABLE (DESC_DEV | DESC_ACCEPT | DESC_CONNECT | DESC_COMPORT | DESC_NETDEV)
+
+enum DS_PROTO {
+    PROTO_ANY = 0,
+    PROTO_DCMP = 1,
+    PROTO_I0TTYP = 272,
+    PROTO_I1TTYP = 273,
+    PROTO_I2TTYP = 274,
+    PROTO_I3TTYP = 275,
+    PROTO_I4TTYP = 276,
+    PROTO_I5TTYP = 277,
+    PROTO_I6TTYP = 278,
+    PROTO_I7TTYP = 279,
+    PROTO_I8TTYP = 280,
+    PROTO_I9TTYP = 281,
+    PROTO_IKTTYP = 287,
+    PROTO_DRFP0 = 288,
+    PROTO_DRFP1 = 289,
+    PROTO_DRFP2 = 290,
+    PROTO_DRFP3 = 291,
+    PROTO_DRFP4 = 292,
+    PROTO_ISDBGP = 304,
+    PROTO_ITDBGP = 320,
+    PROTO_ILOADP = 336,
+    PROTO_E0TTYP = 528,
+    PROTO_E1TTYP = 529,
+    PROTO_E2TTYP = 530,
+    PROTO_E3TTYP = 531,
+    PROTO_E4TTYP = 532,
+    PROTO_E5TTYP = 533,
+    PROTO_E6TTYP = 534,
+    PROTO_E7TTYP = 535,
+    PROTO_E8TTYP = 536,
+    PROTO_E9TTYP = 537,
+    PROTO_EKTTYP = 543,
+    PROTO_ESDBGP = 560,
+    PROTO_ETDBGP = 576,
+    PROTO_ELOADP = 592,
+    PROTO_NETMP = 1024,
+    PROTO_NTTYP = 1040,
+    PROTO_DTTYP = 1041,
+    PROTO_CTTYP = 1042,
+    PROTO_STTYP = 1043,
+    PROTO_SYSTEMP = 1280,
+    PROTO_IP = 1296,
+};
 
 typedef unsigned char byte;
 typedef short unsigned int half;

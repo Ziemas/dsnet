@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 extern unsigned int dot; // defined in mem.c
 static const char *gpr_name[] =
@@ -36,6 +36,7 @@ static const char *gpr_name[] =
   "fp",
   "ra"
 };
+#ifdef TARGET_EE
 static const char *cpr_name[] =
 {
   "index",
@@ -70,6 +71,78 @@ static const char *cpr_name[] =
   "taghi",
   "errorepc",
   "rsvd31"
+};
+#else
+static const char *cpr_name[] =
+{
+  "0",
+  "1",
+  "2",
+  "bpc",
+  "4",
+  "bda",
+  "tar",
+  "dcic",
+  "bada",
+  "bdam",
+  "10",
+  "bpcm",
+  "sr",
+  "cr",
+  "epc",
+  "prid",
+  "16",
+  "17",
+  "18",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24",
+  "25",
+  "26",
+  "27",
+  "28",
+  "29",
+  "30",
+  "31"
+};
+#endif
+static const char *fllt_name[] =
+{
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "18",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24",
+  "25",
+  "26",
+  "27",
+  "28",
+  "29",
+  "30",
+  "31"
 };
 static const char *fpr_name[] =
 {
@@ -235,6 +308,7 @@ static const char *xyzw_name[] =
 static int last_cnt_16 = 20;
 static struct {BT *head;BT *tail;} bts = { NULL, NULL };
 static int bt_no = 0;
+#ifdef TARGET_EE
 OPCODE opcodes[] =
 {
   { "NOP", 4294967295u, 0u, 1u },
@@ -654,6 +728,117 @@ OPCODE opcodes[] =
   { "COP3    cofun", 4261412864u, 1308622848u, 1u },
   { NULL, 0u, 0u, 0u }
 };
+#else
+OPCODE opcodes[] =
+{
+  { "NOP", 4294967295u, 0u, 1u },
+  { "LI      rt,simm", 4292870144u, 603979776u, 4097u },
+  { "LI      rt,imm", 4292870144u, 872415232u, 4097u },
+  { "MOVE    rd,rt", 4292872191u, 33u, 4097u },
+  { "MOVE    rd,rs", 4229892095u, 33u, 4097u },
+  { "MOVE    rd,rt", 4292872191u, 37u, 4097u },
+  { "MOVE    rd,rs", 4229892095u, 37u, 4097u },
+  { "B       off", 4294901760u, 268435456u, 4097u },
+  { "B       off", 4294901760u, 67174400u, 4097u },
+  { "BAL     off", 4294901760u, 68222976u, 4097u },
+  { "ADD     rd,rs,rt", 4227860479u, 32u, 1u },
+  { "ADDI    rt,rs,simm", 4227858432u, 536870912u, 1u },
+  { "ADDIU   rt,rs,simm", 4227858432u, 603979776u, 1u },
+  { "ADDU    rd,rs,rt", 4227860479u, 33u, 1u },
+  { "AND     rd,rs,rt", 4227860479u, 36u, 1u },
+  { "ANDI    rt,rs,imm", 4227858432u, 805306368u, 1u },
+  { "BC0F    off", 4294901760u, 1090519040u, 1u },
+  { "BC1F    off", 4294901760u, 1157627904u, 1u },
+  { "BC2F    off", 4294901760u, 1224736768u, 1u },
+  { "BC3F    off", 4294901760u, 1291845632u, 1u },
+  { "BC0T    off", 4294901760u, 1090584576u, 1u },
+  { "BC1T    off", 4294901760u, 1157693440u, 1u },
+  { "BC2T    off", 4294901760u, 1224802304u, 1u },
+  { "BC3T    off", 4294901760u, 1291911168u, 1u },
+  { "BEQ     rs,rt,off", 4227858432u, 268435456u, 1u },
+  { "BGEZ    rs,off", 4229890048u, 67174400u, 1u },
+  { "BGEZAL  rs,off", 4229890048u, 68222976u, 1u },
+  { "BGTZ    rs,off", 4229890048u, 469762048u, 1u },
+  { "BLEZ    rs,off", 4229890048u, 402653184u, 1u },
+  { "BLTZ    rs,off", 4229890048u, 67108864u, 1u },
+  { "BLTZAL  rs,off", 4229890048u, 68157440u, 1u },
+  { "BNE     rs,rt,off", 4227858432u, 335544320u, 1u },
+  { "BREAK   code", 4227858495u, 13u, 1u },
+  { "RFE", 4294967295u, 1107296272u, 129u },
+  { "DIV     rs,rt", 4227923967u, 26u, 1u },
+  { "DIVU    rs,rt", 4227923967u, 27u, 1u },
+  { "J       target", 4227858432u, 134217728u, 1u },
+  { "JAL     target", 4227858432u, 201326592u, 1u },
+  { "JALR    rd,rs", 4229892095u, 9u, 1u },
+  { "JR      rs", 4229955583u, 8u, 1u },
+  { "LB      rt,simm(rs)", 4227858432u, 2147483648u, 1u },
+  { "LBU     rt,simm(rs)", 4227858432u, 2415919104u, 1u },
+  { "LH      rt,simm(rs)", 4227858432u, 2214592512u, 1u },
+  { "LHU     rt,simm(rs)", 4227858432u, 2483027968u, 1u },
+  { "LUI     rt,imm", 4227858432u, 1006632960u, 1u },
+  { "LW      rt,simm(rs)", 4227858432u, 2348810240u, 1u },
+  { "LWL     rt,simm(rs)", 4227858432u, 2281701376u, 1u },
+  { "LWR     rt,simm(rs)", 4227858432u, 2550136832u, 1u },
+  { "MFHI    rd", 4294903807u, 16u, 1u },
+  { "MFLO    rd", 4294903807u, 18u, 1u },
+  { "MTHI    rs", 4229955583u, 17u, 1u },
+  { "MTLO    rs", 4229955583u, 19u, 1u },
+  { "MULT    rs,rt", 4227923967u, 24u, 1u },
+  { "MULTU   rs,rt", 4227923967u, 25u, 1u },
+  { "NOR     rd,rs,rt", 4227860479u, 39u, 1u },
+  { "OR      rd,rs,rt", 4227860479u, 37u, 1u },
+  { "ORI     rt,rs,imm", 4227858432u, 872415232u, 1u },
+  { "SB      rt,simm(rs)", 4227858432u, 2684354560u, 1u },
+  { "SH      rt,simm(rs)", 4227858432u, 2751463424u, 1u },
+  { "SLL     rd,rt,shamt", 4292870207u, 0u, 1u },
+  { "SLLV    rd,rt,rs", 4227860479u, 4u, 1u },
+  { "SLT     rd,rs,rt", 4227860479u, 42u, 1u },
+  { "SLTI    rt,rs,simm", 4227858432u, 671088640u, 1u },
+  { "SLTIU   rt,rs,simm", 4227858432u, 738197504u, 1u },
+  { "SLTU    rd,rs,rt", 4227860479u, 43u, 1u },
+  { "SRA     rd,rt,shamt", 4292870207u, 3u, 1u },
+  { "SRAV    rd,rt,rs", 4227860479u, 7u, 1u },
+  { "SRL     rd,rt,shamt", 4292870207u, 2u, 1u },
+  { "SRLV    rd,rt,rs", 4227860479u, 6u, 1u },
+  { "SUB     rd,rs,rt", 4227860479u, 34u, 1u },
+  { "SUBU    rd,rs,rt", 4227860479u, 35u, 1u },
+  { "SW      rt,simm(rs)", 4227858432u, 2885681152u, 1u },
+  { "SWL     rt,simm(rs)", 4227858432u, 2818572288u, 1u },
+  { "SWR     rt,simm(rs)", 4227858432u, 3087007744u, 1u },
+  { "SYSCALL code", 4227858495u, 12u, 1u },
+  { "XOR     rd,rs,rt", 4227860479u, 38u, 1u },
+  { "XORI    rt,rs,imm", 4227858432u, 939524096u, 1u },
+  { "CFC0    rt,cd", 4292872191u, 1077936128u, 1u },
+  { "CFC1    rt,cd", 4292872191u, 1145044992u, 1u },
+  { "CFC2    rt,cd", 4292872191u, 1212153856u, 1u },
+  { "CFC3    rt,cd", 4292872191u, 1279262720u, 1u },
+  { "CTC0    rt,cd", 4292872191u, 1086324736u, 1u },
+  { "CTC1    rt,cd", 4292872191u, 1153433600u, 1u },
+  { "CTC2    rt,cd", 4292872191u, 1220542464u, 1u },
+  { "CTC3    rt,cd", 4292872191u, 1287651328u, 1u },
+  { "MFC0    rt,zd", 4292872191u, 1073741824u, 1u },
+  { "MFC1    rt,zd", 4292872191u, 1140850688u, 1u },
+  { "MFC2    rt,zd", 4292872191u, 1207959552u, 1u },
+  { "MFC3    rt,zd", 4292872191u, 1275068416u, 1u },
+  { "MTC0    rt,zd", 4292872191u, 1082130432u, 1u },
+  { "MTC1    rt,zd", 4292872191u, 1149239296u, 1u },
+  { "MTC2    rt,zd", 4292872191u, 1216348160u, 1u },
+  { "MTC3    rt,zd", 4292872191u, 1283457024u, 1u },
+  { "LWC0    zt,simm(rs)", 4227858432u, 3221225472u, 1u },
+  { "LWC1    zt,simm(rs)", 4227858432u, 3288334336u, 1u },
+  { "LWC2    zt,simm(rs)", 4227858432u, 3355443200u, 1u },
+  { "LWC3    zt,simm(rs)", 4227858432u, 3422552064u, 1u },
+  { "SWC0    zt,simm(rs)", 4227858432u, 3758096384u, 1u },
+  { "SWC1    zt,simm(rs)", 4227858432u, 3825205248u, 1u },
+  { "SWC2    zt,simm(rs)", 4227858432u, 3892314112u, 1u },
+  { "SWC3    zt,simm(rs)", 4227858432u, 3959422976u, 1u },
+  { "COP0    cofun", 4261412864u, 1107296256u, 1u },
+  { "COP1    cofun", 4261412864u, 1174405120u, 1u },
+  { "COP2    cofun", 4261412864u, 1241513984u, 1u },
+  { "COP3    cofun", 4261412864u, 1308622848u, 1u },
+  { NULL, 0u, 0u, 0u }
+};
+#endif
 
 static char *__cdecl detect_load_32bits(char *bp, unsigned int adr, unsigned int inst, unsigned int next);
 static int __cdecl tabs(char *buf, char *bp);
@@ -1178,6 +1363,7 @@ LABEL_84:
           v47 = ds_sprintf(bp, "$%s", fpr_name[(inst >> 6) & 0x1F]);
           bp += v47;
         }
+#ifdef TARGET_EE
         else if ( !strcmp("&dest", opr) )
         {
           v48 = ds_sprintf(bp, ".%s", dest_name[(inst >> 21) & 0xF]);
@@ -1241,6 +1427,7 @@ LABEL_84:
           v59 = ds_sprintf(bp, "%d", v66);
           bp += v59;
         }
+#endif
         else
         {
           v60 = ds_sprintf(bp, "??%s??", opr);
@@ -2022,6 +2209,7 @@ LABEL_163:
         return ds_error("invalid fd - %s", tok);
       inst |= (v & 0x1F) << 6;
     }
+#ifdef TARGET_EE
     else if ( !strcmp("I", opr) )
     {
       if ( strcmp("i", tok) )
@@ -2145,6 +2333,7 @@ LABEL_163:
         inst |= (v & 0x1F) << 6;
       }
     }
+#endif
   }
   while ( *fmt );
   while ( 1 )

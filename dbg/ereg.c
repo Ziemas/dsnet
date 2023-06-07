@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 extern int dsc_connected; // defined in dbg.c
 static EE_REGS ee_regs[] =

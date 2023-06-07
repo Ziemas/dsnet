@@ -1,4 +1,4 @@
-#include "dsedb_prototypes.h"
+#include "dbg.h"
 
 static const char *help_db[] =
 {
@@ -3932,9 +3932,13 @@ int __cdecl dbg_help_completion(DS_HISTBUF *hb, char *name)
 
 static int __cdecl valid_delim(int lang, char *p)
 {
-  if ( *p != 45 )
+  if ( *p != '-' )
     return 0;
-  return p[1] == 45 || p[1] == 69;
+#ifdef TARGET_EE
+  return p[1] == '-' || p[1] == 'E';
+#else
+  return p[1] == '-' || p[1] == 'I';
+#endif
 }
 
 static int __cdecl valid_lang(int lang, HELP_MAP *hm)
