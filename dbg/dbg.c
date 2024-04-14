@@ -195,20 +195,25 @@ static void ntoh_word_copy(unsigned int *dest, unsigned int *src, int len)
 static DSP_BUF *alloc_dbgp(int id, int group, int type, int code, int result, int count, void **pp, int len)
 {
   DSP_BUF *db; // [esp+1Ch] [ebp-Ch]
+  DBGP_HDR *hdr;
 
-  db = ds_alloc_buf(TARGET_SDBGP, TARGET_DID, 0, len + 8);
+  db = ds_alloc_buf(TARGET_SDBGP, TARGET_DID, 0, len + sizeof(*hdr));
 
   if ( !db )
     return 0;
-  db->buf[8] = id;
-  db->buf[9] = group;
-  db->buf[10] = type;
-  db->buf[11] = code;
-  db->buf[12] = result;
-  db->buf[13] = count;
-  *(_WORD *)&db->buf[14] = 0;
+
+  hdr = (DBGP_HDR*)&db->buf[sizeof(DECI2_HDR)];
+  hdr->id = id;
+  hdr->group = group;
+  hdr->type = type;
+  hdr->code = code;
+  hdr->result = result;
+  hdr->count = count;
+  hdr->unused = 0;
+
   if ( pp )
-    *pp = &db->buf[16];
+    *pp = &db->buf[sizeof(DECI2_HDR) + sizeof(*hdr)];
+
   return db;
 }
 
@@ -879,61 +884,79 @@ static int send_and_wait(DSP_BUF *db, int stype, void *ptr, int len, int wresult
   sec = 120;
   cur_state = 1;
   cur_proto = TARGET_SDBGP;
+
+  if ( !db ) {
+    cur_stype = -1;
+  } else {
+    switch (stype) {
+      case DBGP_TYPE_CONTINUE:
+      case DBGP_TYPE_BREAK:
+      case DBGP_TYPE_RUN:
+    }
+  }
+
   if ( !db )
   {
     cur_stype = -1;
 LABEL_9:
-    wtype = 21;
-    LOBYTE(cur_state) = cur_state | 2;
+    wtype = DBGP_TYPE_BREAKR;
+    cur_state = cur_state | 2;
     sec = -1;
     ds_bzero(regbuf_mask, sizeof(regbuf_mask));
     goto LABEL_11;
   }
-  cur_stype = (unsigned __int8)stype;
-  if ( (unsigned __int8)stype == 22 )
+  cur_stype = stype;
+  if ( stype == DBGP_TYPE_CONTINUE )
     goto LABEL_8;
-  if ( (unsigned __int8)stype <= 0x16u )
+  if ( stype <= 0x16u )
   {
-    if ( (unsigned __int8)stype != 20 )
+    if ( stype != DBGP_TYPE_BREAK )
       goto LABEL_10;
 LABEL_8:
     dbconf.run_stop_state = -1;
     goto LABEL_9;
   }
-  if ( (unsigned __int8)stype == 24 )
+  if ( stype == DBGP_TYPE_RUN )
     goto LABEL_8;
 LABEL_10:
   wtype = stype + 1;
 LABEL_11:
+
   cur_wtype = wtype;
   cur_pointer = ptr;
   cur_length = len;
+
   if ( db )
     ds_send_desc(target_desc, db);
+
   do
     r = ds_select_desc(sec, 0);
   while ( r > 0 && (cur_state & 1) != 0 );
-  cur_state &= 0xFFFFFFFC;
+
+  cur_state &= ~(1 | 2);
   if ( r )
   {
     if ( r < 0 )
-      cur_state |= 0x100u;
+      cur_state |= STATE_SYSTEM_ERROR;
   }
   else
   {
-    LOBYTE(cur_state) = cur_state | 0x20;
+    cur_state = cur_state | STATE_TIMEOUT;
   }
 
   if ( (cur_state & 0xFF0) == STATE_OK &&
-       (TARGET_EE && (!cur_cpuid || !cur_result)) &&
-       (wresult == cur_result || cur_result == 35) )
+#ifdef DSNET_COMPILING_E
+       (!cur_cpuid || !cur_result) &&
+#endif
+       (wresult == cur_result || cur_result == DBGP_RESULT_STEPNEXT) )
     return cur_result;
 
   print_state_errors(" %<DR_LONG>");
 
-  if (TARGET_EE && cur_cpuid )
+#ifdef DSNET_COMPILING_E
+  if (cur_cpuid)
   {
-    if ( (cur_state & 0xFF0) == 16 && cur_result == 36 )
+    if ( (cur_state & 0xFF0) == STATE_OK && cur_result == DBGP_RESULT_EXCEPTION )
     {
       if ( cur_cpuid == 1 )
       {
@@ -946,8 +969,9 @@ LABEL_11:
     }
     return -1;
   }
+#endif
 
-  if ( (cur_state & 0x10) != 0 )
+  if ( (cur_state & STATE_OK) != 0 )
   {
     return cur_result;
   }
