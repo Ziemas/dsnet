@@ -923,16 +923,15 @@ LABEL_11:
   {
     LOBYTE(cur_state) = cur_state | 0x20;
   }
-#ifdef DSNET_COMPILING_E
-  if ( (cur_state & 0xFF0) == 16 && (!cur_cpuid || !cur_result) && (wresult == cur_result || cur_result == 35) )
-#endif /* DSNET_COMPILING_E */
-#ifdef DSNET_COMPILING_I
-  if ( (cur_state & 0xFF0) == 16 && (wresult == cur_result || cur_result == 35) )
-#endif /* DSNET_COMPILING_I */
+
+  if ( (cur_state & 0xFF0) == STATE_OK &&
+       (TARGET_EE && (!cur_cpuid || !cur_result)) &&
+       (wresult == cur_result || cur_result == 35) )
     return cur_result;
+
   print_state_errors(" %<DR_LONG>");
-#ifdef DSNET_COMPILING_E
-  if ( cur_cpuid )
+
+  if (TARGET_EE && cur_cpuid )
   {
     if ( (cur_state & 0xFF0) == 16 && cur_result == 36 )
     {
@@ -947,24 +946,13 @@ LABEL_11:
     }
     return -1;
   }
-  else if ( (cur_state & 0x10) != 0 )
-  {
-#endif /* DSNET_COMPILING_E */
-#ifdef DSNET_COMPILING_I
+
   if ( (cur_state & 0x10) != 0 )
-#endif /* DSNET_COMPILING_I */
-    return cur_result;
-#ifdef DSNET_COMPILING_E
-  }
-#endif /* DSNET_COMPILING_E */
-  else
-#ifdef DSNET_COMPILING_E
   {
-#endif /* DSNET_COMPILING_E */
-    return -1;
-#ifdef DSNET_COMPILING_E
+    return cur_result;
   }
-#endif /* DSNET_COMPILING_E */
+
+  return -1;
 }
 
 static int get_conf(DBGP_CONF_DATA *conf)
