@@ -1135,7 +1135,8 @@ struct bt {
     unsigned int sp_hi;
 };
 typedef struct bt BT;
-struct syms {
+
+typedef struct syms {
     struct list_head list;
     int id;
     int base;
@@ -1145,8 +1146,8 @@ struct syms {
     int shnum;
     int nsymtab;
     DS_ELF_SHDR* shdr;
-};
-typedef struct syms SYMS;
+} SYMS;
+
 struct mod_syms {
     struct list_head list;
     unsigned int adr;
