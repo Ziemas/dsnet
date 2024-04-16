@@ -2,10 +2,10 @@
 #include "dsxdb_prototypes.h"
 
 extern unsigned int dot; // defined in mem.c
-static struct {SYMS *head;SYMS *tail;} syms_list = { NULL, NULL };
-static struct {MOD_SYMS *head;MOD_SYMS *tail;} mod_syms_list = { NULL, NULL };
 
-static struct {SYMLINE *head;SYMLINE *tail;} symlines;
+static LIST_HEAD(syms_list);
+static LIST_HEAD(mod_syms_list);
+static LIST_HEAD(symlines);
 
 static int add_symline(unsigned int value, char *bp);
 static void show_and_free_symline();
@@ -14,108 +14,73 @@ static int is_gcc_label(char *str);
 
 void clear_module_symbol()
 {
-  MOD_SYMS *q; // [esp+0h] [ebp-8h]
-  MOD_SYMS *p; // [esp+4h] [ebp-4h]
+  MOD_SYMS *i;
 
-  for ( p = mod_syms_list.head; p; p = q )
-  {
-    q = p->forw;
-    ds_free(p);
+  list_for_each_safe (i, &mod_syms_list, list) {
+    list_remove(&i->list);
+    ds_free(i);
   }
-  mod_syms_list.tail = 0;
-  mod_syms_list.head = 0;
 }
 
 void clear_module_symbol_with_name(char *name)
 {
-  MOD_SYMS *q; // [esp+8h] [ebp-8h]
-  MOD_SYMS *p; // [esp+Ch] [ebp-4h]
+  MOD_SYMS *i;
 
-  for ( p = mod_syms_list.head; p; p = q )
-  {
-    q = p->forw;
-    if ( !strcmp(name, p->name) )
-    {
-      if ( p->forw )
-        p->forw->back = p->back;
-      else
-        mod_syms_list.tail = p->back;
-      if ( p->back )
-        p->back->forw = p->forw;
-      else
-        mod_syms_list.head = p->forw;
-      ds_free(p);
+  list_for_each_safe (i, &mod_syms_list, list) {
+    if (strcmp(name, i->name) == 0) {
+        list_remove(&i->list);
+        ds_free(i);
     }
   }
 }
 
 void add_module_symbol(char *name, int adr, int siz, int id)
 {
-  size_t v4; // eax
   MOD_SYMS *tail; // edx
   MOD_SYMS *p; // [esp+8h] [ebp-4h]
 
-  v4 = strlen(name);
-  p = (MOD_SYMS *)ds_alloc(v4 + sizeof(MOD_SYMS) + 1);
+  p = ds_alloc(strlen(name) + sizeof(MOD_SYMS) + 1);
   if ( p )
   {
     strcpy(p->name, name);
     p->adr = adr;
     p->siz = siz;
     p->id = id;
-    tail = mod_syms_list.tail;
-    p->back = mod_syms_list.tail;
-    if ( tail )
-      p->back->forw = p;
-    else
-      mod_syms_list.head = p;
-    p->forw = 0;
-    mod_syms_list.tail = p;
+
+    list_insert(&mod_syms_list, &p->list);
   }
 }
 
 void clear_symbol()
 {
-  SYMS *q; // [esp+0h] [ebp-8h]
-  SYMS *p; // [esp+4h] [ebp-4h]
+  SYMS *sym;
 
-  for ( p = syms_list.head; p; p = q )
-  {
-    q = p->forw;
-    ds_free(p->symtab);
-    ds_free(p->shstrtab);
-    ds_free(p->strtab);
-    ds_free(p->shdr);
-    ds_free(p);
+  list_for_each_safe (sym, &syms_list, list) {
+    list_remove(&sym->list);
+
+    ds_free(sym->symtab);
+    ds_free(sym->shstrtab);
+    ds_free(sym->strtab);
+    ds_free(sym->shdr);
+    ds_free(sym);
   }
-  syms_list.tail = 0;
-  syms_list.head = 0;
+
   clear_module_symbol();
 }
 
 void clear_symbol_with_id(int id)
 {
-  SYMS *q; // [esp+8h] [ebp-8h]
-  SYMS *p; // [esp+Ch] [ebp-4h]
+  SYMS *sym;
 
-  for ( p = syms_list.head; p; p = q )
-  {
-    q = p->forw;
-    if ( p->id == id )
-    {
-      if ( p->forw )
-        p->forw->back = p->back;
-      else
-        syms_list.tail = p->back;
-      if ( p->back )
-        p->back->forw = p->forw;
-      else
-        syms_list.head = p->forw;
-      ds_free(p->symtab);
-      ds_free(p->shstrtab);
-      ds_free(p->strtab);
-      ds_free(p->shdr);
-      ds_free(p);
+  list_for_each_safe (sym, &syms_list, list) {
+    if (sym->id == id) {
+      list_remove(&sym->list);
+
+      ds_free(sym->symtab);
+      ds_free(sym->shstrtab);
+      ds_free(sym->strtab);
+      ds_free(sym->shdr);
+      ds_free(sym);
     }
   }
 }
@@ -124,80 +89,71 @@ int match_symbol(char *str, int nstr, char *name)
 {
   if ( !str )
     return 1;
+
   while ( *name )
   {
     if ( !ds_strncmp(str, name, nstr) )
       return 1;
+
     ++name;
   }
+
   return 0;
 }
 
 static int add_symline(unsigned int value, char *bp)
 {
-  size_t v2; // eax
-  struct symline *back; // ecx
-  SYMLINE *tail; // edx
-  int n; // [esp+Ch] [ebp-Ch]
-  SYMLINE *q; // [esp+10h] [ebp-8h]
-  SYMLINE *p; // [esp+14h] [ebp-4h]
+  SYMLINE *p, *i;
+  int n;
 
-  v2 = strlen(bp);
-  n = v2 + 1;
-  p = (SYMLINE *)ds_alloc(v2 + sizeof(SYMLINE) + 1);
+  n = strlen(bp) + 1;
+  p = ds_alloc(n + sizeof(SYMLINE));
+
   if ( !p )
     return -1;
+
   p->value = value;
-  memcpy(&p[1], bp, n);
-  for ( q = symlines.head; q; q = q->forw )
-  {
-    if ( q->value > value )
-    {
-      back = q->back;
-      p->back = back;
-      if ( back )
-        p->back->forw = p;
-      else
-        symlines.head = p;
-      p->forw = q;
-      q->back = p;
+  memcpy(i->string, bp, n);
+
+  /* TODO: Verify same sort order */
+
+  list_for_each (i, &symlines, list) {
+    if ( i->value > value ) {
+      list_insert(&i->list, &p->list);
+
       return 0;
     }
   }
-  tail = symlines.tail;
-  p->back = symlines.tail;
-  if ( tail )
-    p->back->forw = p;
-  else
-    symlines.head = p;
-  p->forw = 0;
-  symlines.tail = p;
+
+  // If we didn't find an insertion point above
+  list_insert(&symlines, &p->list);
+
   return 0;
 }
 
 static void show_and_free_symline()
 {
-  SYMLINE *q; // [esp+0h] [ebp-8h]
-  SYMLINE *p; // [esp+4h] [ebp-4h]
+  SYMLINE *i;
 
-  for ( p = symlines.head; p; p = q )
-  {
-    q = p->forw;
-    ds_printf("%s\n", (const char *)&p[1]);
-    ds_free(p);
+  list_for_each_safe (i, &symlines, list) {
+    list_remove(&i->list);
+
+    ds_printf("%s\n", i->string);
+    ds_free(i);
   }
-  symlines.tail = 0;
-  symlines.head = 0;
 }
 
 int module_base(int id, int base, int shndx, int info)
 {
   if ( base == -1 )
     return 0;
-  if ( shndx != 65311 && (shndx <= 0 || shndx > 65279) )
+
+  if ( shndx != 0xff1f && (shndx <= 0 || shndx > 0xffef) )
     return 0;
+
   if ( base )
     return base;
+
   return mod_address_by_id(id);
 }
 

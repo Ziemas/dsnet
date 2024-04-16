@@ -1136,8 +1136,7 @@ struct bt {
 };
 typedef struct bt BT;
 struct syms {
-    struct syms* forw;
-    struct syms* back;
+    struct list_head list;
     int id;
     int base;
     DS_ELF_SYMTAB* symtab;
@@ -1149,8 +1148,7 @@ struct syms {
 };
 typedef struct syms SYMS;
 struct mod_syms {
-    struct mod_syms* forw;
-    struct mod_syms* back;
+    struct list_head list;
     unsigned int adr;
     unsigned int siz;
     unsigned int id;
@@ -1158,9 +1156,9 @@ struct mod_syms {
 };
 typedef struct mod_syms MOD_SYMS;
 struct symline {
-    struct symline* forw;
-    struct symline* back;
+    struct list_head list;
     unsigned int value;
+    char string[0];
 };
 typedef struct symline SYMLINE;
 struct imod;
