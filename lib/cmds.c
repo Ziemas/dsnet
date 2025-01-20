@@ -88,8 +88,10 @@ int ds_shell_cmd(int ac, char **av)
 
     if (ac <= 0)
         return 0;
+
     if (ac > 1 && !strcmp("-help", av[1]))
         return ds_error("Usage: ! [<cmd>] [<args>]...]");
+
     if (ac > 2) {
         bp = buf;
         for (i = 1; ac > i; ++i) {
@@ -106,7 +108,8 @@ int ds_shell_cmd(int ac, char **av)
         shell = "/bin/sh";
     raw = ds_resume_kbd();
     pid = fork();
-    if (pid >= 0) {
+
+    if (pid < 0) {
         if (!pid) {
             for (fd = 0; fd <= 255; ++fd) {
                 if (fd > 2)
@@ -139,6 +142,7 @@ int ds_shell_cmd(int ac, char **av)
         v4 = strerror(errno);
         r = ds_error("fork - %s", v4);
     }
+
     if (raw)
         ds_raw_kbd();
     return r;
@@ -328,86 +332,90 @@ int ds_set_cmd(int ac, char **av)
         return 0;
     aca = ac - 1;
     ava = av + 1;
+
     if (aca > 0 && **ava == 45)
         return ds_error("Usage: set [all] [<var>[=<val>]]");
-    if (aca) {
-        while (aca > 0) {
-            if (!strcmp("all", *ava)) {
-                ++f_all;
-            } else {
-                bp = *ava;
-                bq = name;
-                while (*bp && *bp != 61)
-                    *bq++ = *bp++;
-                *bq = 0;
-                for (p = ds_option_list.head;
-                     p && strcmp(name, p->name) && ((p->type & 3) != 1 || strncmp("no", name, 2u) || strcmp(&name[2], p->name));
-                     p = p->forw) {
-                    ;
-                }
-                if (!p) {
-                    if (*bp != 61)
-                        return ds_error("set: no %s option: 'set all' gives all option values.", name);
-                    if (is_reserved_name(name))
-                        return ds_error("set: %s - reserved name", name);
-                    p = ds_set_option(name, 2, 0, 0, 0);
-                    p->type |= 0x20u;
-                }
-                v3 = bp++;
-                if (*v3 == 61) {
-                    v4 = p->type & 3;
-                    if (v4 == 2) {
-                        if ((p->type & 0x10) != 0)
-                            return ds_error("set: %s option is locked", name);
-                        if ((p->type & 0x20) != 0 && (*bp == 32 || !*bp)) {
-                            if (p->forw)
-                                p->forw->back = p->back;
-                            else
-                                ds_option_list.tail = p->back;
-                            if (p->back)
-                                p->back->forw = p->forw;
-                            else
-                                ds_option_list.head = p->forw;
-                            ds_free(p);
-                        } else {
-                            if (ds_eval_word(bp, (unsigned int *)&val))
-                                return -1;
-                            ds_set_option(name, 2, 0, val, 0);
-                        }
-                    } else if ((p->type & 3) == 3) {
-                        if (v4 == 3) {
-                            if ((p->type & 0x10) != 0)
-                                return ds_error("set: %s option is locked", name);
-                            n = ds_scan_string(str, bp);
-                            if (n < 0)
-                                return -1;
-                            str[n] = 0;
-                            ds_set_option(name, 3, str, 0, 0);
-                        }
-                    } else if (v4 == 1) {
-                        return ds_error("set: [no]%s option doesn't take a value", p->name);
-                    }
-                } else if ((p->type & 3) == 1) {
-                    if ((p->type & 0x10) != 0)
-                        return ds_error("set: %s option is locked", name);
-                    if (!strncmp("no", name, 2u))
-                        ds_set_option(&name[2], 1, 0, 0, 0);
-                    else
-                        ds_set_option(name, 1, 0, 1, 0);
-                } else if ((p->type & 3) != 0) {
-                    show_option(name, 1);
-                }
-            }
-            --aca;
-            ++ava;
-        }
-        if (f_all)
-            show_option(0, 1);
-        return 0;
-    } else {
+
+    if (!aca) {
         show_option(0, 0);
         return 0;
     }
+
+    while (aca > 0) {
+        if (!strcmp("all", *ava)) {
+            ++f_all;
+        } else {
+            bp = *ava;
+            bq = name;
+            while (*bp && *bp != 61)
+                *bq++ = *bp++;
+            *bq = 0;
+            for (p = ds_option_list.head;
+                 p && strcmp(name, p->name) && ((p->type & 3) != 1 || strncmp("no", name, 2u) || strcmp(&name[2], p->name));
+                 p = p->forw) {
+                ;
+            }
+            if (!p) {
+                if (*bp != '=')
+                    return ds_error("set: no %s option: 'set all' gives all option values.", name);
+                if (is_reserved_name(name))
+                    return ds_error("set: %s - reserved name", name);
+                p = ds_set_option(name, 2, 0, 0, 0);
+                p->type |= 0x20u;
+            }
+            v3 = bp++;
+            if (*v3 == '=') {
+                v4 = p->type & 3;
+                if (v4 == 2) {
+                    if ((p->type & 0x10) != 0)
+                        return ds_error("set: %s option is locked", name);
+                    if ((p->type & 0x20) != 0 && (*bp == 32 || !*bp)) {
+                        if (p->forw)
+                            p->forw->back = p->back;
+                        else
+                            ds_option_list.tail = p->back;
+                        if (p->back)
+                            p->back->forw = p->forw;
+                        else
+                            ds_option_list.head = p->forw;
+                        ds_free(p);
+                    } else {
+                        if (ds_eval_word(bp, (unsigned int *)&val))
+                            return -1;
+                        ds_set_option(name, 2, 0, val, 0);
+                    }
+                } else if ((p->type & 3) == 3) {
+                    if (v4 == 3) {
+                        if ((p->type & 0x10) != 0)
+                            return ds_error("set: %s option is locked", name);
+                        n = ds_scan_string(str, bp);
+                        if (n < 0)
+                            return -1;
+                        str[n] = 0;
+                        ds_set_option(name, 3, str, 0, 0);
+                    }
+                } else if (v4 == 1) {
+                    return ds_error("set: [no]%s option doesn't take a value", p->name);
+                }
+            } else if ((p->type & 3) == 1) {
+                if ((p->type & 0x10) != 0)
+                    return ds_error("set: %s option is locked", name);
+                if (!strncmp("no", name, 2u))
+                    ds_set_option(&name[2], 1, 0, 0, 0);
+                else
+                    ds_set_option(name, 1, 0, 1, 0);
+            } else if ((p->type & 3) != 0) {
+                show_option(name, 1);
+            }
+        }
+        --aca;
+        ++ava;
+    }
+
+    if (f_all)
+        show_option(0, 1);
+
+    return 0;
 }
 
 static int read_option(char *fname)
@@ -489,24 +497,25 @@ int ds_read_option_file()
 
     if (!*ds_program_name)
         return ds_error("ds_read_option_file: ds_program_name[0] == '\\0'");
+
     home = getenv("HOME");
-    if (!home)
-        goto LABEL_11;
-    sprintf(fname, "%s/.%src", home, ds_program_name);
-    if (access(fname, 4))
-        goto LABEL_11;
-    if (read_option(fname) < 0)
-        return -1;
-    if (!getcwd(cwd, sizeof(cwd) - 2))
-        return ds_error("!getcwd");
-    if (!strcmp(home, cwd))
-        return 0;
-LABEL_11:
+    if (home) {
+        sprintf(fname, "%s/.%src", home, ds_program_name);
+        if (!access(fname, 4)) {
+            if (read_option(fname) < 0)
+                return -1;
+            if (!getcwd(cwd, sizeof(cwd) - 2))
+                return ds_error("!getcwd");
+            if (!strcmp(home, cwd))
+                return 0;
+        }
+    }
+
     sprintf(fname, "./.%src", ds_program_name);
     if (access(fname, 4))
         return 0;
-    else
-        return read_option(fname);
+
+    return read_option(fname);
 }
 
 int ds_read_startup_file()
@@ -518,24 +527,27 @@ int ds_read_startup_file()
 
     if (!*ds_program_name)
         return ds_error("ds_read_statup_file: ds_program_name[0] == '\\0'");
+
     home = getenv("HOME");
-    if (!home)
-        goto LABEL_9;
-    sprintf(fname, "%s/.%src", home, ds_program_name);
-    if (access(fname, 4))
-        goto LABEL_9;
-    sprintf(line, "source %s", fname);
-    ds_cmd_execute(line, 0);
-    if (!getcwd(cwd, sizeof(cwd) - 2))
-        return ds_error("!getcwd");
-    if (!strcmp(home, cwd))
-        return 0;
-LABEL_9:
+    if (home) {
+        sprintf(fname, "%s/.%src", home, ds_program_name);
+        if (!access(fname, 4)) {
+            sprintf(line, "source %s", fname);
+            ds_cmd_execute(line, 0);
+            if (!getcwd(cwd, sizeof(cwd) - 2))
+                return ds_error("!getcwd");
+
+            if (!strcmp(home, cwd))
+                return 0;
+        }
+    }
+
     sprintf(fname, "./.%src", ds_program_name);
     if (!access(fname, 4)) {
         sprintf(line, "source %s", fname);
         ds_cmd_execute(line, 0);
     }
+
     return 0;
 }
 
@@ -2003,10 +2015,12 @@ DSP_BUF *ds_cmd_input(DS_DESC *desc, DSP_BUF *db)
 
     if (!db)
         return 0;
+
     dh = (DECI2_HDR *)db->buf;
     len = dh->length - 12;
     if (len < 0)
         return db;
+
     for (bp = (unsigned __int8 *)&db->buf[12];; ++bp) {
         v3 = len--;
         if (v3 <= 0)
