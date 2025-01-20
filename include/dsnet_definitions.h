@@ -852,6 +852,7 @@ typedef struct _ds_desc {
     int (*accept_func)(struct _ds_desc* desc);
     NETMP_PROTOS* protos;
     int nprotos;
+    char name[1];
 } DS_DESC;
 typedef DSP_BUF*(DS_RECV_FUNC)(DS_DESC* desc, DSP_BUF* db);
 typedef struct _ds_recv_func_desc {

@@ -39,13 +39,13 @@ DS_DESC *ds_add_select_list(
     else
         len = 0;
 
-    desc = ds_alloc(len + sizeof(DS_DESC) + 8 /* FIXME: allocated size is 108 */);
+    desc = ds_alloc(len + sizeof(DS_DESC));
     if (!desc) {
         close(fd);
         return 0;
     }
 
-    ds_bzero(desc, sizeof(DS_DESC) + 8);
+    ds_bzero(desc, sizeof(DS_DESC));
     if (type == 2) {
         if (dev_desc_id < 0)
             dev_desc_id = desc_id++;
@@ -68,7 +68,7 @@ DS_DESC *ds_add_select_list(
     desc->nprotos = 0;
 
     if (name && len > 0)
-        memcpy(&desc[1], name, len);
+        memcpy(desc->name, name, len);
 
     switch (type) {
         case 2:
@@ -339,7 +339,7 @@ static int xrecv_kbd(DS_DESC *desc)
 
     n = ds_read(desc->fd, dat.str, 1);
     if (n != 1)
-        return ds_error("!read(%s)", (const char *)&desc[1]);
+        return ds_error("!read(%s)", desc->name);
     if (last_38 == 27) {
         switch (dat.str[0]) {
             case '[':
@@ -718,7 +718,7 @@ static int xrecv_comport(DS_DESC *desc)
     } else if (errno == EAGAIN) {
         return 0;
     } else {
-        return ds_error("!read(%s)", (const char *)&desc[1]);
+        return ds_error("!read(%s)", desc->name);
     }
 }
 

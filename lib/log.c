@@ -39,7 +39,7 @@ void ds_add_log(DS_DESC *desc, char *msg, DECI2_HDR *dh)
   {
     if ( desc )
     {
-      v5 = strlen((const char *)&desc[1]);
+      v5 = strlen(desc->name);
       v6 = v5 + 4;
       LOBYTE(v6) = (v5 + 4) & 0xFC;
       nlen = v6;
@@ -68,7 +68,7 @@ void ds_add_log(DS_DESC *desc, char *msg, DECI2_HDR *dh)
         dest = (unsigned __int8 *)&p[1];
         if ( nlen > 0 )
         {
-          memcpy(dest, &desc[1], nlen);
+          memcpy(dest, desc->name, nlen);
           dest += nlen;
         }
         if ( dlen > 0 )

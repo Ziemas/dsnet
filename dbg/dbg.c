@@ -2729,7 +2729,7 @@ static int start_console(DS_DESC *desc)
   if ( !ds_add_recv_func(desc, -1, -1, -1, recv_console) )
     return -1;
   erase_input_line();
-  ds_printf("*** Console - connected (%s)\n", (const char *)&desc[1]);
+  ds_printf("*** Console - connected (%s)\n", desc->name);
   redraw_input_line(0);
   ds_disp_desc = desc;
   return 0;
