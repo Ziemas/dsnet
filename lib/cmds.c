@@ -10,25 +10,21 @@ unsigned int m_sdram;
 unsigned int m_init;
 
 DS_HISTBUF ds_histbuf;
-static struct __anon_struct_135
+static struct
 {
     CMD_ENTRY *head;
     CMD_ENTRY *tail;
 } cmd_list;
-static struct __anon_struct_136
+static struct
 {
     DS_OPTION *head;
     DS_OPTION *tail;
 } ds_option_list;
-static struct __anon_struct_137
+static struct
 {
     ALIAS *head;
     ALIAS *tail;
 } aliases;
-
-char path_46[PATH_MAX + 1] = {0};
-char show_arg_77[1024] = {0};
-static int (*last_func_88)() = &ds_help_cmd;
 
 static int cmd_max_na = 0;
 DS_OPTION *ds_opt_hex_radix = NULL;
@@ -41,12 +37,12 @@ DS_OPTION *ds_opt_tty_max_size = NULL;
 int ds_abort_input = 0;
 int ds_cmd_executing = 0;
 
-static struct __anon_struct_131
+static struct
 {
     SHOW_ARG *head;
     SHOW_ARG *tail;
 } show_arg_list = {NULL, NULL};
-static struct __anon_struct_133
+static struct
 {
     HELP_ARG *head;
     HELP_ARG *tail;
@@ -559,10 +555,11 @@ int ds_source_cmd(int ac, char **av)
     void *stream; // [esp+2Ch] [ebp-4h]
     int aca;      // [esp+38h] [ebp+8h]
     char **ava;   // [esp+3Ch] [ebp+Ch]
+    char path[PATH_MAX + 1] = {0};
 
     stream = 0;
     buf = 0;
-    if (ac <= 0 && !path_46[0])
+    if (ac <= 0 && !path[0])
         return 0;
     if (ac > 0) {
         aca = ac - 1;
@@ -570,12 +567,12 @@ int ds_source_cmd(int ac, char **av)
         if (aca > 0 && **ava == 45)
             return ds_error("Usage: source <fname>");
         if (aca > 0)
-            strncpy(path_46, *ava, sizeof(path_46) - 1);
+            strncpy(path, *ava, sizeof(path) - 1);
     }
-    stream = ds_fopen(path_46, "r");
+    stream = ds_fopen(path, "r");
     if (!stream)
         return -1;
-    if (ds_fsize(path_46, &size) < 0)
+    if (ds_fsize(path, &size) < 0)
         return -1;
     buf = (char *)ds_fload(stream, 0, 0, 1, size);
     ds_fclose(stream);
@@ -1187,6 +1184,8 @@ void ds_opt_standard_init()
 void ds_cmd_standard_install(int f_shell)
 {
     SHOW_ARG *sa; // [esp+0h] [ebp-4h]
+    char show_arg[1024] = {0};
+
 
     ds_cmd_install("set", "[all] [<var>[=<val>]]", "show/set options", ds_set_cmd);
     ds_cmd_install("alias", "[-r] [<name> [<value>]]", "show/set alias", ds_alias_cmd);
@@ -1199,13 +1198,13 @@ void ds_cmd_standard_install(int f_shell)
     ds_cmd_install("record", "[[-a] <fname>]", "start/stop recording", ds_record_cmd);
     ds_cmd_install("repeat", "[-c <cnt>] [-i <sec>] [-while <expr>] <cmd>...", "repeat commands", ds_repeat_cmd);
     ds_cmd_install("if", "<expr> <cmd> [elif <expr> <cmd>]... [else <cmd>]", "conditional executing", ds_if_cmd);
-    strcpy(show_arg_77, "[log|status|history");
+    strcpy(show_arg, "[log|status|history");
     for (sa = show_arg_list.head; sa; sa = sa->forw) {
-        strcat(show_arg_77, "|");
-        strcat(show_arg_77, sa->name);
+        strcat(show_arg, "|");
+        strcat(show_arg, sa->name);
     }
-    strcat(show_arg_77, "]...");
-    ds_cmd_install("show", show_arg_77, "show log/status/history", ds_show_cmd);
+    strcat(show_arg, "]...");
+    ds_cmd_install("show", show_arg, "show log/status/history", ds_show_cmd);
     ds_cmd_install("quit", "", "quit", ds_quit_cmd);
     ds_cmd_install("help", "[<cmd>]...", "print help", ds_help_cmd);
 }
@@ -1410,6 +1409,7 @@ int ds_cmd_call(int ac, char **av, int f_repeat)
     CMD_ENTRY *p;              // [esp+8h] [ebp-4h]
     CMD_ENTRY *p_1;            // [esp+8h] [ebp-4h]
     CMD_ENTRY *p_2;            // [esp+8h] [ebp-4h]
+    static int (*last_func)() = &ds_help_cmd;
 
     if (ac > 0) {
         for (p = cmd_list.head; p && strcmp(*av, p->name); p = p->forw)
@@ -1422,7 +1422,7 @@ int ds_cmd_call(int ac, char **av, int f_repeat)
                         func = 0;
                     else
                         func = p->func;
-                    last_func_88 = func;
+                    last_func = func;
                 }
                 return r;
             } else {
@@ -1448,8 +1448,8 @@ int ds_cmd_call(int ac, char **av, int f_repeat)
             ds_printf("\n");
             return -1;
         }
-    } else if (f_repeat && last_func_88) {
-        return last_func_88(0, 0);
+    } else if (f_repeat && last_func) {
+        return last_func(0, 0);
     } else {
         return 0;
     }
