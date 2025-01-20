@@ -4,52 +4,48 @@ unsigned char ds_sid = 72u;
 
 DSP_BUF *ds_alloc_buf(int proto, int did, void *ptr, int len)
 {
-  DSP_BUF *db; // [esp+Ch] [ebp-8h]
+    DSP_BUF *db;
+    DECI2_HDR *hdr;
 
-  if ( (unsigned int)(len + sizeof(DSP_BUF)) <= 0xFFFF )
-  {
-    db = (DSP_BUF *)ds_alloc(len + sizeof(DSP_BUF) + 8);
-    if ( db )
-    {
-      *(_WORD *)db->buf = len + 8;
-      *(_WORD *)&db->buf[2] = 0;
-      *(_WORD *)&db->buf[4] = proto;
-      db->buf[6] = ds_sid;
-      db->buf[7] = did;
-      if ( ptr )
-      {
-        if ( len > 0 )
-          memcpy(&db->buf[8], ptr, len);
-      }
-      return db;
+    if ((unsigned int)(len + sizeof(DSP_BUF)) > 0xFFFF) {
+        ds_error("ds_alloc_buf - too big");
+        return 0;
     }
-    else
-    {
-      return 0;
+
+    db = ds_alloc(len + sizeof(DSP_BUF) + sizeof(DECI2_HDR));
+    if (!db) {
+        return 0;
     }
-  }
-  else
-  {
-    ds_error("ds_alloc_buf - too big");
-    return 0;
-  }
+
+    hdr = (DECI2_HDR *)db->buf;
+    hdr->length = len + sizeof(DECI2_HDR);
+    hdr->reserved = 0;
+    hdr->protocol = proto;
+    hdr->source = ds_sid;
+    hdr->destination = did;
+    if (ptr && len > 0) {
+        memcpy(&db->buf[sizeof(DECI2_HDR)], ptr, len);
+    }
+    return db;
 }
 
 DSP_BUF *ds_free_buf(DSP_BUF *db)
 {
-  return (DSP_BUF *)ds_free(db);
+    return ds_free(db);
 }
 
 DSP_BUF *ds_dup_buf(DSP_BUF *db)
 {
-  int len; // [esp+0h] [ebp-Ch]
-  DSP_BUF *r; // [esp+8h] [ebp-4h]
+    int len;
+    DSP_BUF *buf;
+    DECI2_HDR *hdr;
 
-  len = *(unsigned __int16 *)db->buf;
-  r = (DSP_BUF *)ds_alloc(len + sizeof(DSP_BUF));
-  if ( !r )
-    return 0;
-  memcpy(r->buf, db->buf, len);
-  return r;
+    hdr = (DECI2_HDR *)db->buf;
+    len = hdr->length;
+    buf = ds_alloc(len + sizeof(DSP_BUF));
+    if (!buf)
+        return 0;
+
+    memcpy(buf->buf, db->buf, len);
+    return buf;
 }
-
