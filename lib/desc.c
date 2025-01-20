@@ -62,8 +62,7 @@ DS_DESC *ds_add_select_list(
     desc->comport = 0;
     desc->msg = 0;
     desc->tty_len = 0;
-    desc->recv_func_list.tail = 0;
-    desc->recv_func_list.head = 0;
+    list_init(&desc->recv_func_list);
     desc->accept_func = accept_func;
     desc->protos = 0;
     desc->nprotos = 0;
@@ -163,42 +162,22 @@ LABEL_39:
     rf->type = type;
     rf->code = code;
     rf->func = func;
-    tail = desc->recv_func_list.tail;
-    rf->back = tail;
-    if (tail)
-        rf->back->forw = rf;
-    else
-        desc->recv_func_list.head = rf;
-    rf->forw = 0;
-    desc->recv_func_list.tail = rf;
+    list_insert(&desc->recv_func_list, &rf->list);
     return rf;
 }
 
 DS_RECV_FUNC_DESC *ds_del_recv_func(DS_DESC *desc, DS_RECV_FUNC_DESC *rf)
 {
-    DS_RECV_FUNC_DESC *back; // ebx
-    DS_RECV_FUNC_DESC *forw; // esi
-
-    back = rf->back;
-    if (rf->forw)
-        rf->forw->back = back;
-    else
-        desc->recv_func_list.tail = back;
-    forw = rf->forw;
-    if (rf->back)
-        rf->back->forw = forw;
-    else
-        desc->recv_func_list.head = forw;
-    return (DS_RECV_FUNC_DESC *)ds_free(rf);
+    list_remove(&rf->list);
+    return ds_free(rf);
 }
 
 DS_DESC *ds_close_desc(DS_DESC *desc)
 {
-    int type;                // eax
-    DS_RECV_FUNC_DESC *forw; // [esp+Ch] [ebp-10h]
-    DS_RECV_FUNC_DESC *prf;  // [esp+10h] [ebp-Ch]
-    DSP_BUF *q;              // [esp+14h] [ebp-8h]
-    DSP_BUF *p;              // [esp+18h] [ebp-4h]
+    int type;                    // eax
+    DS_RECV_FUNC_DESC *func, *n; // [esp+Ch] [ebp-10h]
+    DSP_BUF *q;                  // [esp+14h] [ebp-8h]
+    DSP_BUF *p;                  // [esp+18h] [ebp-4h]
 
     type = desc->type;
     if (type == 8)
@@ -229,11 +208,10 @@ LABEL_12:
     if (desc->rbuf)
         ds_free_buf(desc->rbuf);
 
-    for (prf = desc->recv_func_list.head; prf; prf = forw) {
-        forw = prf->forw;
+    list_for_each_safe (func, n, &desc->recv_func_list, list) {
         if (desc->type != 32 && desc->type != 64)
-            prf->func(desc, 0);
-        ds_free(prf);
+            func->func(desc, 0);
+        ds_free(func);
     }
 
     close(desc->fd);
@@ -339,7 +317,7 @@ static int xrecv_common(DS_DESC *desc, DSP_BUF *db)
     if (proto <= 1024 && (proto == 560 || proto == 576))
         goto LABEL_46;
 LABEL_48:
-    for (rf = desc->recv_func_list.tail; rf; rf = rf->back) {
+    list_for_each_reverse (rf, &desc->recv_func_list, list) {
         if ((proto == rf->proto || rf->proto < 0) && (type == rf->type || rf->type < 0) && (v3 == rf->code || rf->code < 0)) {
             db = rf->func(desc, db);
             if (db)
