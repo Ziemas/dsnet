@@ -1,6 +1,6 @@
 #include "dsnet_prototypes.h"
 
-DS_DESC_LIST ds_select_list = {NULL, NULL};
+LIST_HEAD(ds_select_list);
 #ifdef _WIN32
 int ds_now_resetting = 0;
 #endif
@@ -53,6 +53,7 @@ DS_DESC *ds_add_select_list(
     } else {
         desc->id = desc_id++;
     }
+
     desc->type = type;
     desc->f_psnet = 0;
     desc->psnet_priv = 0;
@@ -66,8 +67,10 @@ DS_DESC *ds_add_select_list(
     desc->accept_func = accept_func;
     desc->protos = 0;
     desc->nprotos = 0;
+
     if (name && len > 0)
         memcpy(&desc[1], name, len);
+
     switch (type) {
         case 2:
         case 32:
@@ -84,16 +87,11 @@ DS_DESC *ds_add_select_list(
             msg = "connect";
             break;
     }
+
     if (msg)
         ds_add_log(desc, msg, 0);
-    tail = ds_select_list.tail;
-    desc->back = ds_select_list.tail;
-    if (tail)
-        desc->back->forw = desc;
-    else
-        ds_select_list.head = desc;
-    desc->forw = 0;
-    ds_select_list.tail = desc;
+
+    list_insert(&ds_select_list, &desc->list);
 
     if (type == 8 && accept_func && accept_func(desc) < 0 || recv_func && !ds_add_recv_func(desc, -1, -1, -1, recv_func)) {
         return ds_close_desc(desc);
@@ -221,30 +219,28 @@ DS_DESC *ds_close_desc(DS_DESC *desc)
     LABEL_11:
         ds_add_log(desc, "close", 0);
 LABEL_12:
-    if (desc->forw)
-        desc->forw->back = desc->back;
-    else
-        ds_select_list.tail = desc->back;
-    if (desc->back)
-        desc->back->forw = desc->forw;
-    else
-        ds_select_list.head = desc->forw;
+
+    list_remove(&desc->list);
     for (p = desc->sque.head; p; p = q) {
         q = p->forw;
         ds_free_buf(p);
     }
+
     if (desc->rbuf)
         ds_free_buf(desc->rbuf);
+
     for (prf = desc->recv_func_list.head; prf; prf = forw) {
         forw = prf->forw;
         if (desc->type != 32 && desc->type != 64)
             prf->func(desc, 0);
         ds_free(prf);
     }
+
     close(desc->fd);
     ds_free(desc->protos);
     if (desc->f_psnet)
         ds_free_psnet(desc);
+
     return (DS_DESC *)ds_free(desc);
 }
 
@@ -948,23 +944,22 @@ int ds_select_desc(int sec, int usec)
     struct timeval tval; // [esp+18h] [ebp-110h] BYREF
     fd_set wfds;         // [esp+20h] [ebp-108h] BYREF
     fd_set rfds;         // [esp+A0h] [ebp-88h] BYREF
-    DS_DESC *q;          // [esp+120h] [ebp-8h]
-    DS_DESC *p;          // [esp+124h] [ebp-4h]
+    DS_DESC *desc, *n;   // [esp+124h] [ebp-4h]
 
     tv = 0;
     FD_ZERO(&rfds);
     FD_ZERO(&wfds);
 
-    for (p = ds_select_list.head; p; p = p->forw) {
+    list_for_each (desc, &ds_select_list, list) {
 #ifdef _WIN32
         if (p->type == 1) {
             xrecv_kbd2(p);
         } else
 #endif
         {
-            FD_SET(p->fd, &rfds);
-            if ((p->type & 0x7A) != 0 && (p->sque.head || p->sbuf))
-                FD_SET(p->fd, &wfds);
+            FD_SET(desc->fd, &rfds);
+            if ((desc->type & 0x7A) != 0 && (desc->sque.head || desc->sbuf))
+                FD_SET(desc->fd, &wfds);
         }
     }
 
@@ -987,33 +982,31 @@ int ds_select_desc(int sec, int usec)
         return 0;
     }
 
-    for (p = ds_select_list.head; p; p = q) {
-        // list_for_each_safe
-        q = p->forw;
-        if (FD_ISSET(p->fd, &rfds)) {
-            switch (p->type) {
+    list_for_each_safe (desc, n, &ds_select_list, list) {
+        if (FD_ISSET(desc->fd, &rfds)) {
+            switch (desc->type) {
 #ifndef _WIN32
                 case 1:
-                    xrecv_kbd(p);
+                    xrecv_kbd(desc);
                     break;
 #endif
                 case 2:
-                    if (xrecv_dev(p) == -3)
-                        ds_close_desc(p);
+                    if (xrecv_dev(desc) == -3)
+                        ds_close_desc(desc);
                     break;
                 case 4:
-                    ds_accept(p->fd, p->accept_func);
+                    ds_accept(desc->fd, desc->accept_func);
                     break;
                 case 8:
                 case 16:
-                    if (xrecv_net(p) == -2)
-                        ds_close_desc(p);
+                    if (xrecv_net(desc) == -2)
+                        ds_close_desc(desc);
                     break;
                 case 32:
-                    xrecv_comport(p);
+                    xrecv_comport(desc);
                     break;
                 case 64:
-                    xrecv_netdev(p);
+                    xrecv_netdev(desc);
                     break;
                 default:
                     break;
@@ -1021,27 +1014,25 @@ int ds_select_desc(int sec, int usec)
         }
     }
 
-    for (p = ds_select_list.head; p; p = q) {
-        // list_for_each_safe
-        q = p->forw;
-        if (FD_ISSET(p->fd, &wfds)) {
-            switch (p->type) {
+    list_for_each_safe (desc, n, &ds_select_list, list) {
+        if (FD_ISSET(desc->fd, &wfds)) {
+            switch (desc->type) {
                 case 2:
-                    if (xsend_dev(p) < 0)
-                        ds_close_desc(p);
+                    if (xsend_dev(desc) < 0)
+                        ds_close_desc(desc);
                     break;
                 case 8:
                 case 16:
-                    if (xsend_net(p) < 0)
-                        ds_close_desc(p);
+                    if (xsend_net(desc) < 0)
+                        ds_close_desc(desc);
                     break;
                 case 32:
-                    if (xsend_comport(p) < 0)
-                        ds_close_desc(p);
+                    if (xsend_comport(desc) < 0)
+                        ds_close_desc(desc);
                     break;
                 default:
-                    if (p->type == 64 && xsend_netdev(p) < 0)
-                        ds_close_desc(p);
+                    if (desc->type == 64 && xsend_netdev(desc) < 0)
+                        ds_close_desc(desc);
                     break;
             }
         }
@@ -1060,7 +1051,7 @@ DS_DESC *ds_desc_by_proto(int proto)
 
     pri_dp = 0;
     cpri = -1;
-    for (dp = ds_select_list.head; dp; dp = dp->forw) {
+    list_for_each (dp, &ds_select_list, list) {
         if ((dp->type & 0x18) != 0) {
             protos = dp->protos;
             if (protos) {
@@ -1085,7 +1076,8 @@ int ds_isbusy_desc(int pri, int proto)
 
     if (isttyp((unsigned __int16)proto))
         return 0;
-    for (dp = ds_select_list.head; dp; dp = dp->forw) {
+
+    list_for_each (dp, &ds_select_list, list) {
         protos = dp->protos;
         if (protos) {
             for (i_3 = 0; dp->nprotos > i_3; ++i_3) {
@@ -1147,13 +1139,10 @@ DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
     int i_3;              // [esp+14h] [ebp-10h]
     NETMP_PROTOS *protos; // [esp+18h] [ebp-Ch]
     DSP_BUF *cp;          // [esp+1Ch] [ebp-8h]
-    DSP_BUF *cp_1;        // [esp+1Ch] [ebp-8h]
     DS_DESC *dp;          // [esp+20h] [ebp-4h]
-    DS_DESC *dp_1;        // [esp+20h] [ebp-4h]
-    DS_DESC *dp_2;        // [esp+20h] [ebp-4h]
 
     if (!proto) {
-        for (dp = ds_select_list.head; dp; dp = dp->forw) {
+        list_for_each (dp, &ds_select_list, list) {
             if ((dp->type & 0x18) != 0 && dp->protos) {
                 cp = ds_dup_buf(db);
                 if (!cp)
@@ -1170,28 +1159,29 @@ DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
         }
         return ds_free_buf(db);
     }
+
     if (isttyp(proto)) {
         len = *(unsigned __int16 *)db->buf;
-        for (dp_1 = ds_select_list.head; dp_1; dp_1 = dp_1->forw) {
-            if ((dp_1->type & 0x18) != 0) {
-                protos = dp_1->protos;
+        list_for_each (dp, &ds_select_list, list) {
+            if ((dp->type & 0x18) != 0) {
+                protos = dp->protos;
                 if (protos) {
-                    if (ds_opt_tty_max_size && ds_opt_tty_max_size->val > 0 && dp_1->tty_len > ds_opt_tty_max_size->val)
-                        ds_flush_tty(dp_1, proto);
-                    for (i_3 = 0; dp_1->nprotos > i_3; ++i_3) {
+                    if (ds_opt_tty_max_size && ds_opt_tty_max_size->val > 0 && dp->tty_len > ds_opt_tty_max_size->val)
+                        ds_flush_tty(dp, proto);
+                    for (i_3 = 0; dp->nprotos > i_3; ++i_3) {
                         if (proto == protos->proto) {
-                            cp_1 = ds_dup_buf(db);
-                            if (!cp_1)
+                            cp = ds_dup_buf(db);
+                            if (!cp)
                                 return ds_free_buf(db);
-                            v3 = dp_1->sque.tail;
-                            cp_1->back = v3;
+                            v3 = dp->sque.tail;
+                            cp->back = v3;
                             if (v3)
-                                cp_1->back->forw = cp_1;
+                                cp->back->forw = cp;
                             else
-                                dp_1->sque.head = cp_1;
-                            cp_1->forw = 0;
-                            dp_1->sque.tail = cp_1;
-                            dp_1->tty_len += len;
+                                dp->sque.head = cp;
+                            cp->forw = 0;
+                            dp->sque.tail = cp;
+                            dp->tty_len += len;
                             break;
                         }
                         ++protos;
@@ -1201,17 +1191,17 @@ DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
         }
         return ds_free_buf(db);
     }
-    dp_2 = ds_desc_by_proto(proto);
-    if (!dp_2)
+    dp = ds_desc_by_proto(proto);
+    if (!dp)
         return ds_free_buf(db);
-    v4 = dp_2->sque.tail;
+    v4 = dp->sque.tail;
     db->back = v4;
     if (v4)
         db->back->forw = db;
     else
-        dp_2->sque.head = db;
+        dp->sque.head = db;
     db->forw = 0;
-    dp_2->sque.tail = db;
+    dp->sque.tail = db;
     return 0;
 }
 
@@ -1242,7 +1232,7 @@ void ds_flush_desc_by_proto(int proto)
 
     np = 0;
     nb = 0;
-    for (dp = ds_select_list.head; dp; dp = dp->forw) {
+    list_for_each (dp, &ds_select_list, list) {
         for (p = dp->sque.head; p; p = forw) {
             forw = p->forw;
             if (proto == *(unsigned __int16 *)&p->buf[4]) {
@@ -1278,7 +1268,7 @@ void ds_status_desc()
     DS_DESC *p;           // [esp+2Ch] [ebp-4h]
 
     ds_printf("desc status:\n");
-    for (p = ds_select_list.head; p; p = p->forw) {
+    list_for_each (p, &ds_select_list, list) {
         ds_printf(" 0x%02x", p->id);
         if ((unsigned int)(p->type - 1) <= 0x3F) {
             switch (p->type) {

@@ -13,7 +13,7 @@ extern unsigned int m_init;
 
 // root/dsnet/lib/desc.c
 
-extern DS_DESC_LIST ds_select_list;
+extern struct list_head ds_select_list;
 #ifdef _WIN32
 extern int ds_now_resetting;
 #endif

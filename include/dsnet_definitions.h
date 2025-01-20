@@ -828,9 +828,8 @@ typedef struct {
     DSP_BUF* tail;
 } DSP_QUE;
 struct _ds_recv_func_desc;
-struct _ds_desc {
-    struct _ds_desc* forw;
-    struct _ds_desc* back;
+typedef struct _ds_desc {
+    struct list_head list;
     int id;
     int type;
     int f_psnet;
@@ -849,15 +848,14 @@ struct _ds_desc {
     int comport;
     char* msg;
     int tty_len;
-    struct __anon_struct_58 {
+    struct {
         struct _ds_recv_func_desc* head;
         struct _ds_recv_func_desc* tail;
     } recv_func_list;
     int (*accept_func)(struct _ds_desc* desc);
     NETMP_PROTOS* protos;
     int nprotos;
-};
-typedef struct _ds_desc DS_DESC;
+} DS_DESC;
 typedef DSP_BUF*(DS_RECV_FUNC)(DS_DESC* desc, DSP_BUF* db);
 struct _ds_recv_func_desc {
     struct _ds_recv_func_desc* forw;
@@ -982,11 +980,6 @@ typedef struct {
     STRS* strs;
     int nent;
 } FMT_STRS;
-typedef struct {
-    DS_DESC* head;
-    DS_DESC* tail;
-} DS_DESC_LIST;
-
 struct log_data {
     struct log_data* forw;
     struct log_data* back;

@@ -150,7 +150,7 @@ int ds_send_netmp_status_reply(DS_DESC *desc)
     DS_DESC *dp;               // [esp+38h] [ebp-4h]
 
     len = 2;
-    for (dp = ds_select_list.head; dp; dp = dp->forw) {
+    list_for_each (dp, &ds_select_list, list) {
         if (dp->type == 8) {
             n = 8;
             ml = 1;
@@ -172,7 +172,7 @@ int ds_send_netmp_status_reply(DS_DESC *desc)
     *(_WORD *)p = 0;
     p += 2;
     ds_gettime(&csec, &cusec);
-    for (dp = ds_select_list.head; dp; dp = dp->forw) {
+    list_for_each (dp, &ds_select_list, list) {
         if (dp->type == 8) {
             protos = dp->protos;
             i_3 = 0;
