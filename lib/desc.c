@@ -511,43 +511,47 @@ static int xrecv_dev(DS_DESC *desc)
     DSP_BUF *db;   // [esp+Ch] [ebp-4h]
 
     nbytes = ds_ioctl(desc->fd, 1093009410, 0);
-    if (nbytes >= 0) {
-        if ((unsigned int)nbytes > 7) {
-            db = (DSP_BUF *)ds_alloc(nbytes + sizeof(DSP_BUF));
-            if (db) {
-                dh = (DECI2_HDR *)db->buf;
-                r = ds_read(desc->fd, db->buf, nbytes);
-                if (r >= 0) {
-                    if (r == nbytes) {
-                        if (dh->length > 7u) {
-                            ds_add_log(desc, "recv", dh);
-                            return xrecv_common(desc, db);
-                        } else {
-                            ds_free_buf(db);
-                            return ds_error("xrecv_dev - invalid length (0x%x)", nbytes);
-                        }
-                    } else {
-                        ds_free_buf(db);
-                        return ds_error("xrecv_dev: paritial read");
-                    }
-                } else if (errno == EPIPE) {
-                    ds_free_buf(db);
-                    return -3;
-                } else {
-                    ds_free_buf(db);
-                    return -1;
-                }
-            } else {
-                return -1;
-            }
-        } else {
-            return ds_error("xrecv_dev - too short (%d)", nbytes);
-        }
-    } else if (errno == EPIPE) {
-        return -3;
-    } else {
+    if (nbytes < 0) {
         return ds_error("!ioctl(MRPIOC_RCVLEN)");
     }
+
+    if (errno == EPIPE) {
+        return -3;
+    }
+
+    if ((unsigned int)nbytes < 7) {
+        return ds_error("xrecv_dev - too short (%d)", nbytes);
+    }
+
+    db = ds_alloc(nbytes + sizeof(DSP_BUF));
+    if (!db) {
+        return -1;
+    }
+
+    dh = (DECI2_HDR *)db->buf;
+    r = ds_read(desc->fd, db->buf, nbytes);
+    if (r < 0) {
+        ds_free_buf(db);
+        return -1;
+    }
+
+    if (errno == EPIPE) {
+        ds_free_buf(db);
+        return -3;
+    }
+
+    if (r != nbytes) {
+        ds_free_buf(db);
+        return ds_error("xrecv_dev: paritial read");
+    }
+
+    if (dh->length <= 7u) {
+        ds_free_buf(db);
+        return ds_error("xrecv_dev - invalid length (0x%x)", nbytes);
+    }
+
+    ds_add_log(desc, "recv", dh);
+    return xrecv_common(desc, db);
 }
 
 int ds_reset_info(DS_DESC *desc)
@@ -607,14 +611,17 @@ static int xsend_dev(DS_DESC *desc)
                 desc->tty_len = 0;
         }
     }
+
     r = ds_write(desc->fd, desc->sptr, desc->slen);
     if (r < 0)
         return -1;
+
     desc->sptr += r;
     v6 = desc->slen - r;
     desc->slen = v6;
     if (v6 > 0)
         return ds_error("xsend_dev: partial write");
+
     ds_add_log(desc, "send", (DECI2_HDR *)desc->sbuf->buf);
     desc->sbuf = ds_free_buf(desc->sbuf);
     return 0;
