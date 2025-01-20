@@ -17,6 +17,7 @@ DSP_BUF *ds_alloc_buf(int proto, int did, void *ptr, int len)
         return 0;
     }
 
+    list_init(&db->list);
     hdr = (DECI2_HDR *)db->buf;
     hdr->length = len + sizeof(DECI2_HDR);
     hdr->reserved = 0;
@@ -47,5 +48,7 @@ DSP_BUF *ds_dup_buf(DSP_BUF *db)
         return 0;
 
     memcpy(buf->buf, db->buf, len);
+    list_init(&buf->list);
+
     return buf;
 }

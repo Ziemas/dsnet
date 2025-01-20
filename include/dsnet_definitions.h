@@ -817,16 +817,10 @@ typedef struct {
     unsigned int _rsv9;
     unsigned int MTRIG;
 } iopdata_t;
-struct _dsp_buf {
-    struct _dsp_buf* forw;
-    struct _dsp_buf* back;
+typedef struct _dsp_buf {
+    struct list_head list;
     char buf[];
-};
-typedef struct _dsp_buf DSP_BUF;
-typedef struct {
-    DSP_BUF* head;
-    DSP_BUF* tail;
-} DSP_QUE;
+} DSP_BUF;
 typedef struct _ds_desc {
     struct list_head list;
     int id;
@@ -834,7 +828,7 @@ typedef struct _ds_desc {
     int f_psnet;
     void* psnet_priv;
     int fd;
-    DSP_QUE sque;
+    struct list_head sque; // DSP_BUF list
     DECI2_HDR rhdr;
     char* sptr;
     char* rptr;
@@ -1059,14 +1053,13 @@ struct help_arg {
     int (*func)(char* name);
 };
 typedef struct help_arg HELP_ARG;
-struct alias {
+typedef struct alias {
     struct alias* forw;
     struct alias* back;
     int used;
     char* name;
     char* value;
-};
-typedef struct alias ALIAS;
+} ALIAS;
 typedef struct _ds_option DS_OPTION;
 typedef struct {
     unsigned int bits[64];

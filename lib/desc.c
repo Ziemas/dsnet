@@ -62,10 +62,12 @@ DS_DESC *ds_add_select_list(
     desc->comport = 0;
     desc->msg = 0;
     desc->tty_len = 0;
-    list_init(&desc->recv_func_list);
     desc->accept_func = accept_func;
     desc->protos = 0;
     desc->nprotos = 0;
+
+    list_init(&desc->recv_func_list);
+    list_init(&desc->sque);
 
     if (name && len > 0)
         memcpy(desc->name, name, len);
@@ -101,8 +103,7 @@ DS_DESC *ds_add_select_list(
 
 DS_RECV_FUNC_DESC *ds_add_recv_func(DS_DESC *desc, int proto, int type, int code, DS_RECV_FUNC *func)
 {
-    DS_RECV_FUNC_DESC *tail; // ecx
-    DS_RECV_FUNC_DESC *rf;   // [esp+4h] [ebp-4h]
+    DS_RECV_FUNC_DESC *rf; // [esp+4h] [ebp-4h]
 
     if (!desc || !func)
         return 0;
@@ -174,34 +175,22 @@ DS_RECV_FUNC_DESC *ds_del_recv_func(DS_DESC *desc, DS_RECV_FUNC_DESC *rf)
 
 DS_DESC *ds_close_desc(DS_DESC *desc)
 {
-    int type;                    // eax
-    DS_RECV_FUNC_DESC *func, *n; // [esp+Ch] [ebp-10h]
-    DSP_BUF *q;                  // [esp+14h] [ebp-8h]
-    DSP_BUF *p;                  // [esp+18h] [ebp-4h]
+    DS_RECV_FUNC_DESC *func, *n;
+    DSP_BUF *p, *n1;
 
-    type = desc->type;
-    if (type == 8)
-        goto LABEL_11;
-    if (type <= 8) {
-        if (type != 2 && type != 4)
-            goto LABEL_12;
-        goto LABEL_11;
+    switch (desc->type) {
+        case 2:
+        case 4:
+        case 8:
+        case 16:
+        case 32:
+        case 64:
+            ds_add_log(desc, "close", 0);
+            break;
     }
-    if (type == 32)
-        goto LABEL_11;
-    if (type > 32) {
-        if (type != 64)
-            goto LABEL_12;
-        goto LABEL_11;
-    }
-    if (type == 16)
-    LABEL_11:
-        ds_add_log(desc, "close", 0);
-LABEL_12:
 
     list_remove(&desc->list);
-    for (p = desc->sque.head; p; p = q) {
-        q = p->forw;
+    list_for_each_safe (p, n1, &desc->sque, list) {
         ds_free_buf(p);
     }
 
@@ -219,7 +208,7 @@ LABEL_12:
     if (desc->f_psnet)
         ds_free_psnet(desc);
 
-    return (DS_DESC *)ds_free(desc);
+    return ds_free(desc);
 }
 
 static int xrecv_common(DS_DESC *desc, DSP_BUF *db)
@@ -576,38 +565,23 @@ int ds_reset_info(DS_DESC *desc)
 
 static int xsend_dev(DS_DESC *desc)
 {
-    DSP_BUF *head; // ecx
-    DSP_BUF *back; // ebx
-    DSP_BUF *forw; // esi
-    int v5;        // ecx
-    int v6;        // edx
-    int r;         // [esp+10h] [ebp-Ch]
-    DECI2_HDR *dh; // [esp+14h] [ebp-8h]
-    DSP_QUE *dq;   // [esp+18h] [ebp-4h]
+    DECI2_HDR *dh;
+    int r;
 
-    dq = &desc->sque;
     if (!desc->sbuf) {
-        head = dq->head;
-        desc->sbuf = dq->head;
-        if (!head)
+        if (list_empty(&desc->sque))
             return 0;
-        back = desc->sbuf->back;
-        if (desc->sbuf->forw)
-            desc->sbuf->forw->back = back;
-        else
-            desc->sque.tail = back;
-        forw = desc->sbuf->forw;
-        if (desc->sbuf->back)
-            desc->sbuf->back->forw = forw;
-        else
-            dq->head = forw;
+
+        desc->sbuf = list_first_entry(&desc->sque, DSP_BUF, list);
+        list_remove(&desc->sbuf->list);
+
         dh = (DECI2_HDR *)desc->sbuf->buf;
         desc->sptr = (char *)dh;
         desc->slen = dh->length;
+
         if (isttyp(dh->protocol)) {
-            v5 = desc->tty_len - desc->slen;
-            desc->tty_len = v5;
-            if (v5 < 0)
+            desc->tty_len = desc->tty_len - desc->slen;
+            if (desc->tty_len < 0)
                 desc->tty_len = 0;
         }
     }
@@ -617,9 +591,8 @@ static int xsend_dev(DS_DESC *desc)
         return -1;
 
     desc->sptr += r;
-    v6 = desc->slen - r;
-    desc->slen = v6;
-    if (v6 > 0)
+    desc->slen = desc->slen - r;
+    if (desc->slen > 0)
         return ds_error("xsend_dev: partial write");
 
     ds_add_log(desc, "send", (DECI2_HDR *)desc->sbuf->buf);
@@ -731,91 +704,65 @@ static int xrecv_comport(DS_DESC *desc)
 
 static int xsend_net(DS_DESC *desc)
 {
-    DSP_BUF *head; // ecx
-    DSP_BUF *back; // ebx
-    DSP_BUF *forw; // esi
-    int v5;        // ecx
-    int v6;        // edx
     int r;         // [esp+10h] [ebp-Ch]
     DECI2_HDR *dh; // [esp+14h] [ebp-8h]
-    DSP_QUE *dq;   // [esp+18h] [ebp-4h]
 
-    dq = &desc->sque;
     if (!desc->sbuf) {
-        head = dq->head;
-        desc->sbuf = dq->head;
-        if (!head)
+        if (list_empty(&desc->sque))
             return 0;
-        back = desc->sbuf->back;
-        if (desc->sbuf->forw)
-            desc->sbuf->forw->back = back;
-        else
-            desc->sque.tail = back;
-        forw = desc->sbuf->forw;
-        if (desc->sbuf->back)
-            desc->sbuf->back->forw = forw;
-        else
-            dq->head = forw;
+
+        desc->sbuf = list_first_entry(&desc->sque, DSP_BUF, list);
+        list_remove(&desc->sbuf->list);
+
         dh = (DECI2_HDR *)desc->sbuf->buf;
         desc->sptr = (char *)dh;
         desc->slen = dh->length;
         if (isttyp(dh->protocol)) {
-            v5 = desc->tty_len - desc->slen;
-            desc->tty_len = v5;
-            if (v5 < 0)
+            desc->tty_len = desc->tty_len - desc->slen;
+            if (desc->tty_len < 0)
                 desc->tty_len = 0;
         }
     }
+
     if (desc->f_psnet)
         r = ds_write_psnet(desc, desc->sptr, desc->slen);
     else
         r = ds_write(desc->fd, desc->sptr, desc->slen);
-    if (r >= 0) {
-        desc->sptr += r;
-        v6 = desc->slen - r;
-        desc->slen = v6;
-        if (v6 <= 0) {
-            if (*(_WORD *)&desc->sbuf->buf[4] != 1040 && *(_WORD *)&desc->sbuf->buf[4] != 1041)
-                ds_add_log(desc, "send", (DECI2_HDR *)desc->sbuf->buf);
-            desc->sbuf = ds_free_buf(desc->sbuf);
-            return 1;
-        } else {
-            return 0;
-        }
-    } else if (errno == EAGAIN) {
-        return 0;
-    } else {
+
+    if (r < 0) {
         return -1;
+    }
+
+    if (errno == EAGAIN) {
+        return 0;
+    }
+
+    desc->sptr += r;
+    desc->slen = desc->slen - r;
+    if (desc->slen <= 0) {
+        if (*(_WORD *)&desc->sbuf->buf[4] != 1040 && *(_WORD *)&desc->sbuf->buf[4] != 1041)
+            ds_add_log(desc, "send", (DECI2_HDR *)desc->sbuf->buf);
+        desc->sbuf = ds_free_buf(desc->sbuf);
+        return 1;
+    } else {
+        return 0;
     }
 }
 
 static int xsend_comport(DS_DESC *desc)
 {
-    DSP_BUF *head; // ecx
-    DSP_BUF *back; // ebx
-    DSP_BUF *forw; // esi
     int v5;        // ecx
     int v6;        // edx
     int r;         // [esp+10h] [ebp-Ch]
     DECI2_HDR *dh; // [esp+14h] [ebp-8h]
-    DSP_QUE *dq;   // [esp+18h] [ebp-4h]
 
-    dq = &desc->sque;
     if (!desc->sbuf) {
-        head = dq->head;
-        desc->sbuf = dq->head;
-        if (!head)
+        if (list_empty(&desc->sque))
             return 0;
-        back = desc->sbuf->back;
-        if (desc->sbuf->forw)
-            desc->sbuf->forw->back = back;
-        else
-            desc->sque.tail = back;
-        forw = desc->sbuf->forw;
-        if (desc->sbuf->back)
-            desc->sbuf->back->forw = forw;
-        else
-            dq->head = forw;
+
+        desc->sbuf = list_first_entry(&desc->sque, DSP_BUF, list);
+        list_remove(&desc->sbuf->list);
+
         dh = (DECI2_HDR *)desc->sbuf->buf;
         desc->sptr = &desc->sbuf->buf[12];
         desc->slen = dh->length - 12;
@@ -849,30 +796,17 @@ static int xsend_comport(DS_DESC *desc)
 
 static int xsend_netdev(DS_DESC *desc)
 {
-    DSP_BUF *head; // ecx
-    DSP_BUF *back; // ebx
-    DSP_BUF *forw; // esi
     int v5;        // edx
     int r;         // [esp+10h] [ebp-Ch]
     DECI2_HDR *dh; // [esp+14h] [ebp-8h]
-    DSP_QUE *dq;   // [esp+18h] [ebp-4h]
 
-    dq = &desc->sque;
     if (!desc->sbuf) {
-        head = dq->head;
-        desc->sbuf = dq->head;
-        if (!head)
+        if (list_empty(&desc->sque))
             return 0;
-        back = desc->sbuf->back;
-        if (desc->sbuf->forw)
-            desc->sbuf->forw->back = back;
-        else
-            desc->sque.tail = back;
-        forw = desc->sbuf->forw;
-        if (desc->sbuf->back)
-            desc->sbuf->back->forw = forw;
-        else
-            dq->head = forw;
+
+        desc->sbuf = list_first_entry(&desc->sque, DSP_BUF, list);
+        list_remove(&desc->sbuf->list);
+
         dh = (DECI2_HDR *)desc->sbuf->buf;
         if (*(_WORD *)&desc->sbuf->buf[4] != 1296) {
             desc->sbuf = ds_free_buf(desc->sbuf);
@@ -943,7 +877,7 @@ int ds_select_desc(int sec, int usec)
 #endif
         {
             FD_SET(desc->fd, &rfds);
-            if ((desc->type & 0x7A) != 0 && (desc->sque.head || desc->sbuf))
+            if ((desc->type & 0x7A) != 0 && (!list_empty(&desc->sque) || desc->sbuf))
                 FD_SET(desc->fd, &wfds);
         }
     }
@@ -1077,54 +1011,46 @@ int ds_isbusy_desc(int pri, int proto)
 
 static void ds_flush_tty(DS_DESC *dp, int proto)
 {
-    DSP_BUF *v2;   // ebx
-    DSP_BUF *tail; // ecx
-    char msg[100]; // [esp+8h] [ebp-78h] BYREF
-    int v5;        // [esp+6Ch] [ebp-14h]
-    int node;      // [esp+70h] [ebp-10h]
-    DECI2_HDR *dh; // [esp+74h] [ebp-Ch]
-    DSP_BUF *q;    // [esp+78h] [ebp-8h]
-    DSP_BUF *p;    // [esp+7Ch] [ebp-4h]
+    DSP_BUF *v2;    // ebx
+    DSP_BUF *tail;  // ecx
+    char msg[100];  // [esp+8h] [ebp-78h] BYREF
+    int len;        // [esp+6Ch] [ebp-14h]
+    int node;       // [esp+70h] [ebp-10h]
+    DECI2_HDR *dh;  // [esp+74h] [ebp-Ch]
+    DSP_BUF *q;     // [esp+78h] [ebp-8h]
+    DSP_BUF *p, *n; // [esp+7Ch] [ebp-4h]
 
     node = 0;
-    v5 = 0;
-    for (p = dp->sque.head; p; p = q) {
-        q = p->forw;
+    len = 0;
+    list_for_each_safe (p, n, &dp->sque, list) {
         dh = (DECI2_HDR *)p->buf;
-        v5 += *(unsigned __int16 *)p->buf;
-        node = (unsigned __int8)p->buf[7];
+
+        len += dh->length;
+        node = dh->destination;
+
+        list_remove(&p->list);
         ds_free_buf(p);
     }
-    dp->sque.tail = 0;
-    dp->sque.head = 0;
-    dp->tty_len = sprintf(msg, "\n\n*** TTY buffer overflow. Skip %d bytes data ***\n\n", v5);
-    p = ds_alloc_buf((unsigned __int16)proto, (unsigned __int8)node, 0, dp->tty_len + 4);
+
+    dp->tty_len = sprintf(msg, "\n\n*** TTY buffer overflow. Skip %d bytes data ***\n\n", len);
+    p = ds_alloc_buf(proto, node, 0, dp->tty_len + 4);
     if (p) {
         dh = (DECI2_HDR *)p->buf;
         *(_DWORD *)&p->buf[8] = 0;
         memcpy(&dh[1].protocol, msg, dp->tty_len);
-        v2 = p;
-        tail = dp->sque.tail;
-        p->back = tail;
-        if (tail)
-            p->back->forw = v2;
-        else
-            dp->sque.head = v2;
-        p->forw = 0;
-        dp->sque.tail = p;
+
+        list_insert(&dp->sque, &p->list);
     }
 }
 
 DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
 {
-    DSP_BUF *tail;        // ecx
-    DSP_BUF *v3;          // ecx
-    DSP_BUF *v4;          // ecx
     int len;              // [esp+10h] [ebp-14h]
-    int i_3;              // [esp+14h] [ebp-10h]
+    int i;                // [esp+14h] [ebp-10h]
     NETMP_PROTOS *protos; // [esp+18h] [ebp-Ch]
     DSP_BUF *cp;          // [esp+1Ch] [ebp-8h]
     DS_DESC *dp;          // [esp+20h] [ebp-4h]
+    DECI2_HDR *hdr;
 
     if (!proto) {
         list_for_each (dp, &ds_select_list, list) {
@@ -1132,40 +1058,29 @@ DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
                 cp = ds_dup_buf(db);
                 if (!cp)
                     return ds_free_buf(db);
-                tail = dp->sque.tail;
-                cp->back = tail;
-                if (tail)
-                    cp->back->forw = cp;
-                else
-                    dp->sque.head = cp;
-                cp->forw = 0;
-                dp->sque.tail = cp;
+
+                list_insert(&dp->sque, &cp->list);
             }
         }
         return ds_free_buf(db);
     }
 
     if (isttyp(proto)) {
-        len = *(unsigned __int16 *)db->buf;
+        hdr = (DECI2_HDR *)db->buf;
+        len = hdr->length;
         list_for_each (dp, &ds_select_list, list) {
             if ((dp->type & 0x18) != 0) {
                 protos = dp->protos;
                 if (protos) {
                     if (ds_opt_tty_max_size && ds_opt_tty_max_size->val > 0 && dp->tty_len > ds_opt_tty_max_size->val)
                         ds_flush_tty(dp, proto);
-                    for (i_3 = 0; dp->nprotos > i_3; ++i_3) {
+                    for (i = 0; dp->nprotos > i; ++i) {
                         if (proto == protos->proto) {
                             cp = ds_dup_buf(db);
                             if (!cp)
                                 return ds_free_buf(db);
-                            v3 = dp->sque.tail;
-                            cp->back = v3;
-                            if (v3)
-                                cp->back->forw = cp;
-                            else
-                                dp->sque.head = cp;
-                            cp->forw = 0;
-                            dp->sque.tail = cp;
+
+                            list_insert(&dp->sque, &cp->list);
                             dp->tty_len += len;
                             break;
                         }
@@ -1176,63 +1091,43 @@ DSP_BUF *ds_send_net(int proto, DSP_BUF *db)
         }
         return ds_free_buf(db);
     }
+
     dp = ds_desc_by_proto(proto);
     if (!dp)
         return ds_free_buf(db);
-    v4 = dp->sque.tail;
-    db->back = v4;
-    if (v4)
-        db->back->forw = db;
-    else
-        dp->sque.head = db;
-    db->forw = 0;
-    dp->sque.tail = db;
+
+    list_insert(&dp->sque, &db->list);
+
     return 0;
 }
 
 DSP_BUF *ds_send_desc(DS_DESC *desc, DSP_BUF *db)
 {
-    DSP_BUF *tail; // ebx
-
-    tail = desc->sque.tail;
-    db->back = tail;
-    if (tail)
-        db->back->forw = db;
-    else
-        desc->sque.head = db;
-    db->forw = 0;
-    desc->sque.tail = db;
+    list_insert(&desc->sque, &db->list);
     return 0;
 }
 
 void ds_flush_desc_by_proto(int proto)
 {
-    DSP_BUF *back; // ebx
-    DSP_BUF *v2;   // esi
-    int nb;        // [esp+8h] [ebp-18h]
-    int np;        // [esp+Ch] [ebp-14h]
-    DSP_BUF *forw; // [esp+14h] [ebp-Ch]
-    DSP_BUF *p;    // [esp+18h] [ebp-8h]
-    DS_DESC *dp;   // [esp+1Ch] [ebp-4h]
+    DSP_BUF *back;  // ebx
+    DSP_BUF *v2;    // esi
+    int nb;         // [esp+8h] [ebp-18h]
+    int np;         // [esp+Ch] [ebp-14h]
+    DSP_BUF *forw;  // [esp+14h] [ebp-Ch]
+    DSP_BUF *p, *n; // [esp+18h] [ebp-8h]
+    DS_DESC *dp;    // [esp+1Ch] [ebp-4h]
+    DECI2_HDR *hdr;
 
     np = 0;
     nb = 0;
+
     list_for_each (dp, &ds_select_list, list) {
-        for (p = dp->sque.head; p; p = forw) {
-            forw = p->forw;
-            if (proto == *(unsigned __int16 *)&p->buf[4]) {
+        list_for_each_safe (p, n, &dp->sque, list) {
+            hdr = (DECI2_HDR *)p->buf;
+            if (proto == hdr->protocol) {
                 ++np;
-                nb += *(unsigned __int16 *)p->buf;
-                back = p->back;
-                if (p->forw)
-                    p->forw->back = back;
-                else
-                    dp->sque.tail = back;
-                v2 = p->forw;
-                if (p->back)
-                    p->back->forw = v2;
-                else
-                    dp->sque.head = v2;
+                nb += hdr->length;
+                list_remove(&p->list);
                 ds_free_buf(p);
             }
         }
@@ -1269,8 +1164,10 @@ void ds_status_desc()
             ds_printf(",psnet");
         if (ds_disp_desc != p) {
             n = 0;
-            for (db = p->sque.head; db; db = db->forw)
+            list_for_each (db, &p->sque, list) {
                 ++n;
+            }
+
             if (n > 0)
                 ds_printf(" sque=%d", n);
             if (p->sbuf)
