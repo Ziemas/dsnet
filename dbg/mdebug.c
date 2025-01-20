@@ -17,9 +17,9 @@ static char *search_source_file(char *fname, char *obj_path, char *src_dirs);
 
 void clear_mdebug()
 {
-  MDEBUG *md;
+  MDEBUG *md, *n;
 
-  list_for_each_safe(md, &mdebug_list, list) {
+  list_for_each_safe(md, n, &mdebug_list, list) {
     list_remove(&md->list);
 
     ds_free(md->shdr);
@@ -34,9 +34,9 @@ void clear_mdebug()
 
 void clear_mdebug_with_id(int id)
 {
-  MDEBUG *md;
+  MDEBUG *md, *n;
 
-  list_for_each_safe(md, &mdebug_list, list) {
+  list_for_each_safe(md, n, &mdebug_list, list) {
     if (md->id == id) {
       list_remove(&md->list);
 
